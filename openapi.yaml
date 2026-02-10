@@ -1,135 +1,11 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: 'Hải Phòng Task Management System API'
-  version: '1.0.0'
-servers:
-  - url: 'https://api.example.com/v1'
-tags:
-  - name: Auth
-    description: 'Endpoints for user authentication'
-  - name: Users
-    description: 'User management endpoints'
-  - name: Roles
-    description: 'Role management endpoints'
-  - name: Permissions
-    description: 'Permissions management'
-  - name: Departments
-    description: 'Department management'
-  - name: Positions
-    description: 'Position management'
-  - name: Task Categories
-    description: 'Task category management'
-  - name: Task Priorities
-    description: 'Task priority management'
-  - name: Task Statuses
-    description: 'Task status management'
-  - name: Tasks
-    description: 'Task management endpoints'
-  - name: Task Assignees
-    description: 'Endpoints for managing task assignees'
-  - name: Workflows
-    description: 'Workflow management endpoints'
-  - name: Notifications
-    description: 'Notification management endpoints'
-  - name: Logs
-    description: 'Log management endpoints'
-  - name: Reports
-    description: 'Report generation endpoints'
-components:
-  securitySchemes:
-    bearerAuth:
-      type: 'http'
-      scheme: 'bearer'
-      bearerFormat: 'JWT'
-  schemas:
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-    MetaPaging:
-      type: object
-      properties:
-        total:
-          type: integer
-        count:
-          type: integer
-    User:
-      type: object
-      properties:
-        id:
-          type: integer
-    Role:
-      type: object
-      properties:
-        id:
-          type: integer
-    Permission:
-      type: object
-      properties:
-        id:
-          type: integer
-    Department:
-      type: object
-      properties:
-        id:
-          type: integer
-    Position:
-      type: object
-      properties:
-        id:
-          type: integer
-    TaskCategory:
-      type: object
-      properties:
-        id:
-          type: integer
-    TaskPriority:
-      type: object
-      properties:
-        id:
-          type: integer
-    TaskStatus:
-      type: object
-      properties:
-        id:
-          type: integer
-    Task:
-      type: object
-      properties:
-        id:
-          type: integer
-    TaskFile:
-      type: object
-      properties:
-        id:
-          type: integer
-    TaskLog:
-      type: object
-      properties:
-        id:
-          type: integer
-    Workflow:
-      type: object
-      properties:
-        id:
-          type: integer
-    WorkflowStep:
-      type: object
-      properties:
-        id:
-          type: integer
-    Notification:
-      type: object
-      properties:
-        id:
-          type: integer
+  title: API Documentation
+  version: 1.0.0
 paths:
   /auth/login:
     post:
-      tags:
-        - Auth
-      summary: 'User login'
+      summary: Login
       requestBody:
         required: true
         content:
@@ -143,30 +19,406 @@ paths:
                   type: string
       responses:
         '200':
-          description: 'Successful login'
+          description: Successful login
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  token:
+                  access_token:
                     type: string
-      security:
-        - bearerAuth: []
-  /users:
-    get:
-      tags:
-        - Users
-      summary: 'Get all users'
+                  refresh_token:
+                    type: string
+  /auth/refresh:
+    post:
+      summary: Refresh tokens
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
       responses:
         '200':
-          description: 'A list of users'
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/User'
-      security:
-        - bearerAuth: []
-  // ... Add more paths for each endpoint here ...
+          description: Tokens refreshed
+  /auth/reset-password:
+    post:
+      summary: Reset password
+  /auth/whoami:
+    get:
+      summary: Get current user information
+  /users:
+    get:
+      summary: Get all users
+    post:
+      summary: Create a new user
+  /users/{id}:
+    get:
+      summary: Get user by ID
+    patch:
+      summary: Update user
+    delete:
+      summary: Delete user
+  /users/{id}/password:
+    patch:
+      summary: Change user password
+  /users/{id}/logs:
+    get:
+      summary: Get user logs
+  /roles:
+    get:
+      summary: Get all roles
+    post:
+      summary: Create a new role
+  /roles/{id}:
+    get:
+      summary: Get role by ID
+    patch:
+      summary: Update role
+    delete:
+      summary: Delete role
+  /permissions:
+    get:
+      summary: Get all permissions
+  /departments:
+    get:
+      summary: Get all departments
+    post:
+      summary: Create a new department
+  /departments/{id}:
+    get:
+      summary: Get department by ID
+    patch:
+      summary: Update department
+    delete:
+      summary: Delete department
+  /positions:
+    get:
+      summary: Get all positions
+    post:
+      summary: Create a new position
+  /positions/{id}:
+    get:
+      summary: Get position by ID
+    patch:
+      summary: Update position
+    delete:
+      summary: Delete position
+  /task-categories:
+    get:
+      summary: Get all task categories
+    post:
+      summary: Create a new task category
+  /task-categories/{id}:
+    get:
+      summary: Get task category by ID
+    patch:
+      summary: Update task category
+    delete:
+      summary: Delete task category
+  /task-priorities:
+    get:
+      summary: Get all task priorities
+    post:
+      summary: Create a new task priority
+  /task-priorities/{id}:
+    get:
+      summary: Get task priority by ID
+    patch:
+      summary: Update task priority
+    delete:
+      summary: Delete task priority
+  /task-statuses:
+    get:
+      summary: Get all task statuses
+    post:
+      summary: Create a new task status
+  /task-statuses/{id}:
+    get:
+      summary: Get task status by ID
+    patch:
+      summary: Update task status
+    delete:
+      summary: Delete task status
+  /tasks:
+    get:
+      summary: Get all tasks
+    post:
+      summary: Create a new task
+  /tasks/{id}:
+    get:
+      summary: Get task by ID
+    patch:
+      summary: Update task
+    delete:
+      summary: Delete task
+  /tasks/import:
+    post:
+      summary: Import tasks
+  /tasks/{id}/assign:
+    post:
+      summary: Assign a task
+  /tasks/{id}/subtask:
+    post:
+      summary: Create a subtask
+  /tasks/{id}/status:
+    patch:
+      summary: Update task status
+  /tasks/{id}/files:
+    get:
+      summary: Get task files
+    post:
+      summary: Upload task file
+    delete:
+      summary: Delete task file
+  /tasks/{id}/logs:
+    get:
+      summary: Get task logs
+  /tasks/{id}/comments:
+    get:
+      summary: Get comments for task
+    post:
+      summary: Add comment to task
+  /tasks/{id}/assignees:
+    get:
+      summary: Get assignees for task
+    post:
+      summary: Add assignee to task
+  /tasks/{id}/assignees/{assign_id}:
+    delete:
+      summary: Remove assignee from task
+    patch:
+      summary: Update assignee for task
+  /workflows:
+    get:
+      summary: Get all workflows
+    post:
+      summary: Create a new workflow
+  /workflows/{id}:
+    get:
+      summary: Get workflow by ID
+    patch:
+      summary: Update workflow
+    delete:
+      summary: Delete workflow
+  /workflow-steps:
+    get:
+      summary: Get all workflow steps
+    post:
+      summary: Create a new workflow step
+  /workflow-steps/{id}:
+    patch:
+      summary: Update workflow step
+    delete:
+      summary: Delete workflow step
+  /tasks/{id}/approve:
+    post:
+      summary: Approve a task
+  /tasks/{id}/workflow-logs:
+    get:
+      summary: Get workflow logs for task
+  /notifications:
+    get:
+      summary: Get all notifications
+    post:
+      summary: Create a new notification
+  /notifications/{id}/read:
+    patch:
+      summary: Mark notification as read
+  /reminder:
+    get:
+      summary: Get reminders
+  /reminder/{id}/done:
+    patch:
+      summary: Mark reminder as done
+  /logs:
+    get:
+      summary: Get logs
+  /logs/{id}:
+    get:
+      summary: Get log by ID
+  /reports/tasks-summary:
+    get:
+      summary: Get tasks summary report
+  /reports/progress-by-department:
+    get:
+      summary: Get progress report by department
+  /reports/chart-progress:
+    get:
+      summary: Get chart progress report
+  /reports/export:
+    get:
+      summary: Export reports
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        email:
+          type: string
+        role_ids:
+          type: array
+          items:
+            type: string
+      example:
+        id: "123"
+        username: "johndoe"
+        email: "johndoe@example.com"
+        role_ids: ["admin", "user"]
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      example:
+        id: "123"
+        name: "admin"
+    Permission:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      example:
+        id: "123"
+        name: "edit_users"
+    Department:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      example:
+        id: "123"
+        name: "HR"
+    Position:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+      example:
+        id: "123"
+        title: "Software Engineer"
+    TaskCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      example:
+        id: "123"
+        name: "Development"
+    TaskPriority:
+      type: object
+      properties:
+        id:
+          type: string
+        level:
+          type: string
+      example:
+        id: "123"
+        level: "High"
+    TaskStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+      example:
+        id: "123"
+        status: "In Progress"
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+      example:
+        id: "123"
+        title: "Implement feature"
+        description: "Details about the feature"
+    TaskFile:
+      type: object
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+      example:
+        id: "123"
+        filename: "file.txt"
+    TaskLog:
+      type: object
+      properties:
+        id:
+          type: string
+        message:
+          type: string
+      example:
+        id: "123"
+        message: "Task created"
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+      example:
+        id: "123"
+        name: "Main Workflow"
+    WorkflowStep:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+      example:
+        id: "123"
+        title: "Step 1"
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        message:
+          type: string
+      example:
+        id: "123"
+        message: "New notification"
+    MetaPaging:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+      example:
+        total_count: 100
+        page: 1
+        page_size: 10
+  responses:
+    NotFound:
+      description: Resource not found
+    Unauthorized:
+      description: Access denied
+    Forbidden:
+      description: Forbidden access
