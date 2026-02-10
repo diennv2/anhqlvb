@@ -1,0 +1,172 @@
+openapi: 3.0.3
+info:
+  title: 'Hải Phòng Task Management System API'
+  version: '1.0.0'
+servers:
+  - url: 'https://api.example.com/v1'
+tags:
+  - name: Auth
+    description: 'Endpoints for user authentication'
+  - name: Users
+    description: 'User management endpoints'
+  - name: Roles
+    description: 'Role management endpoints'
+  - name: Permissions
+    description: 'Permissions management'
+  - name: Departments
+    description: 'Department management'
+  - name: Positions
+    description: 'Position management'
+  - name: Task Categories
+    description: 'Task category management'
+  - name: Task Priorities
+    description: 'Task priority management'
+  - name: Task Statuses
+    description: 'Task status management'
+  - name: Tasks
+    description: 'Task management endpoints'
+  - name: Task Assignees
+    description: 'Endpoints for managing task assignees'
+  - name: Workflows
+    description: 'Workflow management endpoints'
+  - name: Notifications
+    description: 'Notification management endpoints'
+  - name: Logs
+    description: 'Log management endpoints'
+  - name: Reports
+    description: 'Report generation endpoints'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: 'http'
+      scheme: 'bearer'
+      bearerFormat: 'JWT'
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    MetaPaging:
+      type: object
+      properties:
+        total:
+          type: integer
+        count:
+          type: integer
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+    Role:
+      type: object
+      properties:
+        id:
+          type: integer
+    Permission:
+      type: object
+      properties:
+        id:
+          type: integer
+    Department:
+      type: object
+      properties:
+        id:
+          type: integer
+    Position:
+      type: object
+      properties:
+        id:
+          type: integer
+    TaskCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+    TaskPriority:
+      type: object
+      properties:
+        id:
+          type: integer
+    TaskStatus:
+      type: object
+      properties:
+        id:
+          type: integer
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+    TaskFile:
+      type: object
+      properties:
+        id:
+          type: integer
+    TaskLog:
+      type: object
+      properties:
+        id:
+          type: integer
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: integer
+    WorkflowStep:
+      type: object
+      properties:
+        id:
+          type: integer
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: 'User login'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: 'Successful login'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+      security:
+        - bearerAuth: []
+  /users:
+    get:
+      tags:
+        - Users
+      summary: 'Get all users'
+      responses:
+        '200':
+          description: 'A list of users'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+      security:
+        - bearerAuth: []
+  // ... Add more paths for each endpoint here ...
