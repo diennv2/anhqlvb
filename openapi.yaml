@@ -499,7 +499,8 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TaskLog' }
-                  # ========== ROLES ==========
+
+  # ========== ROLES ==========
   /roles:
     get:
       tags: [Roles]
@@ -942,7 +943,7 @@ paths:
 
     patch:
       tags: [TaskPriorities]
-      summary: C���p nhật mức ưu tiên
+      summary: Cập nhật mức ưu tiên
       security:
         - bearerAuth: []
       parameters:
