@@ -5,13 +5,16 @@ info:
   description: |
     REST API đầy đủ cho hệ thống quản lý công việc Hải Phòng
     - 79 endpoints covering: Auth, Users, Roles, Departments, Tasks, Workflow, Notifications, Logs, Reports
-    - JWT Authentication
+    - JWT Bearer Authentication
     - Pagination, Filtering, Sorting
     - Request/Response examples
 
 servers:
   - url: https://api.example.com/api/v1
     description: Production server
+
+security:
+  - bearerAuth: []
 
 tags:
   - name: Auth
@@ -52,54 +55,952 @@ components:
       scheme: bearer
       bearerFormat: JWT
 
+  parameters:
+    IdPathParam:
+      name: id
+      in: path
+      required: true
+      description: ID của tài nguyên
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+
+    PageQueryParam:
+      name: page
+      in: query
+      description: Số trang (bắt đầu từ 1)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+        example: 1
+
+    PageSizeQueryParam:
+      name: pageSize
+      in: query
+      description: Số bản ghi mỗi trang
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 20
+        example: 20
+
+    SearchQueryParam:
+      name: search
+      in: query
+      description: Tìm kiếm theo từ khóa
+      schema:
+        type: string
+        maxLength: 200
+        example: "báo cáo"
+
+    SortQueryParam:
+      name: sort
+      in: query
+      description: "Sắp xếp theo trường. Dùng dấu '-' cho giảm dần. Ví dụ: -created_at,title"
+      schema:
+        type: string
+        example: "-created_at"
+
+    FromDateQueryParam:
+      name: from
+      in: query
+      description: Lọc từ ngày (YYYY-MM-DD)
+      schema:
+        type: string
+        format: date
+        example: "2026-01-01"
+
+    ToDateQueryParam:
+      name: to
+      in: query
+      description: Lọc đến ngày (YYYY-MM-DD)
+      schema:
+        type: string
+        format: date
+        example: "2026-12-31"
+
+    WorkflowIdQueryParam:
+      name: workflow_id
+      in: query
+      description: Lọc theo workflow
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+
+    UnreadQueryParam:
+      name: unread
+      in: query
+      description: Lọc thông báo chưa đọc
+      schema:
+        type: boolean
+        example: true
+
+    GroupByQueryParam:
+      name: group_by
+      in: query
+      description: Nhóm kết quả theo tiêu chí
+      schema:
+        type: string
+        enum: [department, status, user]
+        example: "department"
+
+  responses:
+    400BadRequest:
+      description: Dữ liệu đầu vào không hợp lệ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "validation_error"
+            message: "Dữ liệu đầu vào không hợp lệ"
+            field: "title"
+
+    401Unauthorized:
+      description: Chưa xác thực hoặc token không hợp lệ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "unauthorized"
+            message: "Token không hợp lệ hoặc đã hết hạn"
+
+    403Forbidden:
+      description: Không có quyền thực hiện thao tác này
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "forbidden"
+            message: "Không có quyền truy cập"
+
+    404NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "not_found"
+            message: "Tài nguyên không tồn tại"
+
+    409Conflict:
+      description: Xung đột dữ liệu (ví dụ trùng lặp)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "conflict"
+            message: "Dữ liệu đã tồn tại"
+
+    422UnprocessableEntity:
+      description: Dữ liệu không thể xử lý
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "unprocessable_entity"
+            message: "Không thể xử lý yêu cầu"
+
+    500InternalServerError:
+      description: Lỗi máy chủ nội bộ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            error: "internal_server_error"
+            message: "Đã xảy ra lỗi không mong muốn"
+
   schemas:
     ErrorResponse:
       type: object
+      additionalProperties: false
       properties:
         error: { type: string, example: "validation_error" }
-        message: { type: string, example: "Field is required" }
+        message: { type: string, example: "Dữ liệu đầu vào không hợp lệ" }
         field: { type: string, example: "title" }
 
     MetaPaging:
       type: object
       properties:
-        page: { type: integer, example: 1 }
-        pageSize: { type: integer, example: 20 }
-        total: { type: integer, example: 150 }
+        page: { type: integer, minimum: 1, example: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 200, example: 20 }
+        total: { type: integer, minimum: 0, example: 150 }
 
+    # ---- AUTH DTOs ----
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: "nguyenvana"
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: "123456"
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token: { type: string, example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+        refresh_token: { type: string, example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+        token_type: { type: string, example: "Bearer" }
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      additionalProperties: false
+      properties:
+        refresh_token:
+          type: string
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+    RequestResetRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          example: "nguyenvana@haiphong.gov.vn"
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          example: "abc123"
+        new_password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: "newpass123"
+
+    # ---- USER DTOs ----
+    CreateUserRequest:
+      type: object
+      required: [username, email, full_name, password, department_id, position_id, role_id]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-z0-9_]+$'
+          example: "tranthib"
+        email:
+          type: string
+          format: email
+          example: "tranthib@hp.gov.vn"
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Trần Thị B"
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: "123456"
+        phone:
+          type: string
+          pattern: '^[0-9]{9,11}$'
+          example: "0912345678"
+        department_id:
+          type: integer
+          minimum: 1
+          example: 2
+        position_id:
+          type: integer
+          minimum: 1
+          example: 3
+        role_id:
+          type: integer
+          minimum: 1
+          example: 2
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          example: "tranthib@hp.gov.vn"
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Trần Thị B"
+        phone:
+          type: string
+          pattern: '^[0-9]{9,11}$'
+          example: "0912345678"
+        department_id:
+          type: integer
+          minimum: 1
+          example: 2
+        position_id:
+          type: integer
+          minimum: 1
+          example: 3
+        role_id:
+          type: integer
+          minimum: 1
+          example: 2
+        status:
+          type: string
+          enum: [active, inactive]
+          example: "active"
+
+    ChangePasswordRequest:
+      type: object
+      required: [new_password]
+      additionalProperties: false
+      properties:
+        new_password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: "newpass123"
+
+    # ---- ROLE DTOs ----
+    CreateRoleRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Staff"
+        description:
+          type: string
+          maxLength: 500
+          example: "Nhân viên"
+
+    UpdateRoleRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Staff"
+        description:
+          type: string
+          maxLength: 500
+          example: "Nhân viên"
+
+    # ---- DEPARTMENT DTOs ----
+    CreateDepartmentRequest:
+      type: object
+      required: [name, code]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Phòng Kế hoạch"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 20
+          pattern: '^[A-Z0-9_]+$'
+          example: "KH"
+        parent_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+        description:
+          type: string
+          maxLength: 500
+          example: "Phòng Kế hoạch"
+
+    UpdateDepartmentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Phòng Kế hoạch"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 20
+          pattern: '^[A-Z0-9_]+$'
+          example: "KH"
+        parent_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+        description:
+          type: string
+          maxLength: 500
+          example: "Phòng Kế hoạch"
+
+    # ---- POSITION DTOs ----
+    CreatePositionRequest:
+      type: object
+      required: [name, level]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Phó phòng"
+        level:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 4
+
+    UpdatePositionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Phó phòng"
+        level:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 4
+
+    # ---- TASK CATEGORY DTOs ----
+    CreateTaskCategoryRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Văn bản đến"
+        description:
+          type: string
+          maxLength: 500
+          example: "Loại công việc văn bản đến"
+        is_active:
+          type: boolean
+          default: true
+          example: true
+
+    UpdateTaskCategoryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Văn bản đến"
+        description:
+          type: string
+          maxLength: 500
+          example: "Loại công việc văn bản đến"
+        is_active:
+          type: boolean
+          example: true
+
+    # ---- TASK PRIORITY DTOs ----
+    CreateTaskPriorityRequest:
+      type: object
+      required: [name, level]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Trung bình"
+        level:
+          type: integer
+          minimum: 1
+          example: 2
+        is_default:
+          type: boolean
+          default: false
+          example: false
+
+    UpdateTaskPriorityRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Trung bình"
+        level:
+          type: integer
+          minimum: 1
+          example: 2
+        is_default:
+          type: boolean
+          example: false
+
+    # ---- TASK STATUS DTOs ----
+    CreateTaskStatusRequest:
+      type: object
+      required: [name, code]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Đang xử lý"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: '^[a-z0-9_]+$'
+          example: "processing"
+        is_closed_state:
+          type: boolean
+          default: false
+          example: false
+
+    UpdateTaskStatusRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Đang xử lý"
+        code:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: '^[a-z0-9_]+$'
+          example: "processing"
+        is_closed_state:
+          type: boolean
+          example: false
+
+    # ---- TASK DTOs ----
+    CreateTaskRequest:
+      type: object
+      required: [title, category_id, priority_id, status_id, department_id, start_date, due_date]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 500
+          example: "Báo cáo tài chính Q1"
+        description:
+          type: string
+          maxLength: 5000
+          example: "Cần hoàn thành báo cáo tổng kết..."
+        category_id:
+          type: integer
+          minimum: 1
+          example: 2
+        priority_id:
+          type: integer
+          minimum: 1
+          example: 1
+        status_id:
+          type: integer
+          minimum: 1
+          example: 1
+        department_id:
+          type: integer
+          minimum: 1
+          example: 3
+        parent_task_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+        assignees:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          example: [5, 8]
+        start_date:
+          type: string
+          format: date
+          example: "2026-02-10"
+        due_date:
+          type: string
+          format: date
+          example: "2026-03-10"
+        confidential:
+          type: boolean
+          default: false
+          example: false
+        must_confirm:
+          type: boolean
+          default: false
+          example: true
+        workflow_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+
+    UpdateTaskRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 500
+          example: "Báo cáo tài chính Q1 (cập nhật)"
+        description:
+          type: string
+          maxLength: 5000
+          example: "Nội dung cập nhật..."
+        category_id:
+          type: integer
+          minimum: 1
+          example: 2
+        priority_id:
+          type: integer
+          minimum: 1
+          example: 1
+        status_id:
+          type: integer
+          minimum: 1
+          example: 3
+        department_id:
+          type: integer
+          minimum: 1
+          example: 3
+        start_date:
+          type: string
+          format: date
+          example: "2026-02-10"
+        due_date:
+          type: string
+          format: date
+          example: "2026-03-10"
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 80
+        confidential:
+          type: boolean
+          example: false
+        must_confirm:
+          type: boolean
+          example: true
+        workflow_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: null
+
+    ChangeTaskStatusRequest:
+      type: object
+      required: [status_id]
+      additionalProperties: false
+      properties:
+        status_id:
+          type: integer
+          minimum: 1
+          example: 3
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+          example: 80
+
+    CreateSubtaskRequest:
+      type: object
+      required: [title]
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 500
+          example: "Thu thập số liệu"
+        description:
+          type: string
+          maxLength: 5000
+          example: "Thu thập số liệu từ các phòng ban"
+        priority_id:
+          type: integer
+          minimum: 1
+          example: 1
+        assignees:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          example: [5]
+        due_date:
+          type: string
+          format: date
+          example: "2026-02-28"
+
+    AssignTaskRequest:
+      type: object
+      required: [assignees]
+      additionalProperties: false
+      properties:
+        assignees:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+          minItems: 1
+          example: [5, 8, 12]
+
+    AddAssigneeRequest:
+      type: object
+      required: [user_id]
+      additionalProperties: false
+      properties:
+        user_id:
+          type: integer
+          minimum: 1
+          example: 8
+        is_primary:
+          type: boolean
+          default: false
+          example: false
+
+    UpdateAssigneeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        is_primary:
+          type: boolean
+          example: true
+        active:
+          type: boolean
+          example: true
+
+    AddCommentRequest:
+      type: object
+      required: [content]
+      additionalProperties: false
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: "Đã hoàn thành phần thu thập số liệu"
+
+    ImportResultResponse:
+      type: object
+      properties:
+        imported:
+          type: integer
+          minimum: 0
+          example: 25
+        failed:
+          type: integer
+          minimum: 0
+          example: 2
+
+    # ---- WORKFLOW DTOs ----
+    CreateWorkflowRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Quy trình phê duyệt văn bản"
+        description:
+          type: string
+          maxLength: 500
+          example: "3 bước: Trưởng phòng → Phó giám đốc → Giám đốc"
+        is_active:
+          type: boolean
+          default: true
+          example: true
+
+    UpdateWorkflowRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Quy trình phê duyệt văn bản"
+        description:
+          type: string
+          maxLength: 500
+          example: "Mô tả quy trình"
+        is_active:
+          type: boolean
+          example: true
+
+    CreateWorkflowStepRequest:
+      type: object
+      required: [workflow_id, name, order_index]
+      additionalProperties: false
+      properties:
+        workflow_id:
+          type: integer
+          minimum: 1
+          example: 1
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Trưởng phòng duyệt"
+        order_index:
+          type: integer
+          minimum: 1
+          example: 1
+        is_approval:
+          type: boolean
+          default: false
+          example: true
+        auto_advance:
+          type: boolean
+          default: false
+          example: false
+        role_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: 3
+
+    UpdateWorkflowStepRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+          example: "Trưởng phòng duyệt"
+        order_index:
+          type: integer
+          minimum: 1
+          example: 1
+        is_approval:
+          type: boolean
+          example: true
+        auto_advance:
+          type: boolean
+          example: false
+        role_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: 3
+
+    ApproveTaskRequest:
+      type: object
+      required: [action]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [approve, reject]
+          example: "approve"
+        comments:
+          type: string
+          maxLength: 2000
+          example: "Đồng ý"
+
+    # ---- NOTIFICATION DTOs ----
+    CreateNotificationRequest:
+      type: object
+      required: [user_id, content, type]
+      additionalProperties: false
+      properties:
+        user_id:
+          type: integer
+          minimum: 1
+          example: 5
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: "Task #123 đã được gán cho bạn"
+        type:
+          type: string
+          maxLength: 50
+          example: "task"
+        task_id:
+          type: integer
+          minimum: 1
+          nullable: true
+          example: 123
+
+    # ---- ENTITY SCHEMAS (responses) ----
     User:
       type: object
       properties:
-        id: { type: integer, example: 1 }
-        username: { type: string, example: "nguyenvana" }
-        email: { type: string, example: "nguyenvana@haiphong.gov.vn" }
+        id: { type: integer, minimum: 1, example: 1 }
+        username: { type: string, minLength: 3, maxLength: 50, example: "nguyenvana" }
+        email: { type: string, format: email, example: "nguyenvana@haiphong.gov.vn" }
         full_name: { type: string, example: "Nguyễn Văn A" }
         phone: { type: string, example: "0912345678" }
         department: { type: string, example: "Phòng Hành chính" }
         position: { type: string, example: "Trưởng phòng" }
         role: { type: string, example: "Manager" }
-        status: { type: string, example: "active" }
+        status: { type: string, enum: [active, inactive], example: "active" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    PagedUserResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/User' }
+        meta: { $ref: '#/components/schemas/MetaPaging' }
 
     Role:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Admin" }
         description: { type: string, example: "Administrator role" }
 
     Permission:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         code: { type: string, example: "task.create" }
         description: { type: string, example: "Create task" }
 
     Department:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Phòng Hành chính" }
         code: { type: string, example: "HC" }
         parent_id: { type: integer, nullable: true, example: null }
@@ -110,14 +1011,14 @@ components:
     Position:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Trưởng phòng" }
-        level: { type: integer, example: 5 }
+        level: { type: integer, minimum: 1, maximum: 10, example: 5 }
 
     TaskCategory:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Văn bản đi" }
         description: { type: string, example: "Loại công việc văn bản đi" }
         is_active: { type: boolean, example: true }
@@ -125,15 +1026,15 @@ components:
     TaskPriority:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Cao" }
-        level: { type: integer, example: 1 }
+        level: { type: integer, minimum: 1, example: 1 }
         is_default: { type: boolean, example: false }
 
     TaskStatus:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Đang xử lý" }
         code: { type: string, example: "processing" }
         is_closed_state: { type: boolean, example: false }
@@ -141,43 +1042,51 @@ components:
     Task:
       type: object
       properties:
-        id: { type: integer, example: 123 }
+        id: { type: integer, minimum: 1, example: 123 }
         title: { type: string, example: "Báo cáo tài chính Q1" }
         description: { type: string, example: "Cần hoàn thành báo cáo..." }
-        category_id: { type: integer, example: 2 }
-        priority_id: { type: integer, example: 1 }
-        status_id: { type: integer, example: 2 }
-        creator_id: { type: integer, example: 5 }
-        department_id: { type: integer, example: 3 }
-        parent_task_id: { type: integer, nullable: true }
+        category_id: { type: integer, minimum: 1, example: 2 }
+        priority_id: { type: integer, minimum: 1, example: 1 }
+        status_id: { type: integer, minimum: 1, example: 2 }
+        creator_id: { type: integer, minimum: 1, example: 5 }
+        department_id: { type: integer, minimum: 1, example: 3 }
+        parent_task_id: { type: integer, minimum: 1, nullable: true, example: null }
         start_date: { type: string, format: date, example: "2026-02-10" }
         due_date: { type: string, format: date, example: "2026-03-10" }
-        completed_date: { type: string, format: date, nullable: true }
-        progress: { type: integer, example: 50 }
+        completed_date: { type: string, format: date, nullable: true, example: null }
+        progress: { type: integer, minimum: 0, maximum: 100, example: 50 }
         confidential: { type: boolean, example: false }
         must_confirm: { type: boolean, example: true }
-        workflow_id: { type: integer, nullable: true }
+        workflow_id: { type: integer, minimum: 1, nullable: true, example: null }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    PagedTaskResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Task' }
+        meta: { $ref: '#/components/schemas/MetaPaging' }
 
     TaskFile:
       type: object
       properties:
-        id: { type: integer, example: 1 }
-        task_id: { type: integer, example: 123 }
+        id: { type: integer, minimum: 1, example: 1 }
+        task_id: { type: integer, minimum: 1, example: 123 }
         file_name: { type: string, example: "BaoCao_Q1.xlsx" }
         file_path: { type: string, example: "/files/2026/02/BaoCao_Q1.xlsx" }
         file_type: { type: string, example: "xlsx" }
-        file_size: { type: integer, example: 1024000 }
-        uploaded_by: { type: integer, example: 5 }
+        file_size: { type: integer, minimum: 0, example: 1024000 }
+        uploaded_by: { type: integer, minimum: 1, example: 5 }
         uploaded_at: { type: string, format: date-time }
 
     TaskLog:
       type: object
       properties:
-        id: { type: integer, example: 1 }
-        task_id: { type: integer, example: 123 }
-        user_id: { type: integer, example: 5 }
+        id: { type: integer, minimum: 1, example: 1 }
+        task_id: { type: integer, minimum: 1, example: 123 }
+        user_id: { type: integer, minimum: 1, example: 5 }
         action: { type: string, example: "status_change" }
         content: { type: string, example: "Chuyển trạng thái từ 'Mới' sang 'Đang xử lý'" }
         is_system: { type: boolean, example: true }
@@ -186,7 +1095,7 @@ components:
     Workflow:
       type: object
       properties:
-        id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Quy trình phê duyệt văn bản" }
         description: { type: string, example: "Quy trình 3 bước" }
         is_active: { type: boolean, example: true }
@@ -194,43 +1103,78 @@ components:
     WorkflowStep:
       type: object
       properties:
-        id: { type: integer, example: 1 }
-        workflow_id: { type: integer, example: 1 }
+        id: { type: integer, minimum: 1, example: 1 }
+        workflow_id: { type: integer, minimum: 1, example: 1 }
         name: { type: string, example: "Trưởng phòng duyệt" }
-        order_index: { type: integer, example: 1 }
+        order_index: { type: integer, minimum: 1, example: 1 }
         is_approval: { type: boolean, example: true }
         auto_advance: { type: boolean, example: false }
-        role_id: { type: integer, nullable: true }
+        role_id: { type: integer, minimum: 1, nullable: true, example: null }
 
     Notification:
       type: object
       properties:
-        id: { type: integer, example: 1 }
-        user_id: { type: integer, example: 5 }
+        id: { type: integer, minimum: 1, example: 1 }
+        user_id: { type: integer, minimum: 1, example: 5 }
         content: { type: string, example: "Task #123 hết hạn hôm nay" }
         type: { type: string, example: "task" }
         read_status: { type: boolean, example: false }
-        task_id: { type: integer, nullable: true, example: 123 }
+        task_id: { type: integer, minimum: 1, nullable: true, example: 123 }
         sent_at: { type: string, format: date-time }
+
+    AssigneeResponse:
+      type: object
+      properties:
+        id: { type: integer, minimum: 1, example: 1 }
+        user_id: { type: integer, minimum: 1, example: 8 }
+        user_name: { type: string, example: "tranthib" }
+        is_primary: { type: boolean, example: false }
+        assigned_at: { type: string, format: date-time }
+
+    CommentResponse:
+      type: object
+      properties:
+        id: { type: integer, minimum: 1, example: 1 }
+        user_id: { type: integer, minimum: 1, example: 5 }
+        content: { type: string, example: "Đã hoàn thành phần thu thập số liệu" }
+        created_at: { type: string, format: date-time }
+
+    ReminderResponse:
+      type: object
+      properties:
+        id: { type: integer, minimum: 1, example: 1 }
+        task_id: { type: integer, minimum: 1, example: 123 }
+        remind_at: { type: string, format: date-time }
+
+    WorkflowLogEntry:
+      type: object
+      properties:
+        step_name: { type: string, example: "Trưởng phòng duyệt" }
+        user_name: { type: string, example: "nguyenvana" }
+        action: { type: string, enum: [approve, reject], example: "approve" }
+        comments: { type: string, example: "Đồng ý" }
+        created_at: { type: string, format: date-time }
+
+    MessageResponse:
+      type: object
+      properties:
+        message: { type: string, example: "Thao tác thành công" }
 
 paths:
 
   # ========== AUTH ==========
   /auth/login:
     post:
+      operationId: authLogin
       tags: [Auth]
       summary: Đăng nhập
       description: Đăng nhập với username/password, trả về JWT token
+      security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [username, password]
-              properties:
-                username: { type: string }
-                password: { type: string }
+            schema: { $ref: '#/components/schemas/LoginRequest' }
             example:
               username: "nguyenvana"
               password: "123456"
@@ -239,37 +1183,28 @@ paths:
           description: Đăng nhập thành công
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  access_token: { type: string }
-                  refresh_token: { type: string }
-                  token_type: { type: string }
+              schema: { $ref: '#/components/schemas/LoginResponse' }
               example:
                 access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 token_type: "Bearer"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
         '401':
-          description: Sai thông tin đăng nhập
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-              example:
-                error: "unauthorized"
-                message: "Invalid credentials"
+          $ref: '#/components/responses/401Unauthorized'
 
   /auth/token/refresh:
     post:
+      operationId: authRefreshToken
       tags: [Auth]
-      summary: Refresh access token
+      summary: Làm mới access token
+      description: Dùng refresh_token để lấy access_token mới
+      security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                refresh_token: { type: string }
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
             example:
               refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
       responses:
@@ -277,96 +1212,101 @@ paths:
           description: Token mới
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  access_token: { type: string }
-                  refresh_token: { type: string }
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
   /auth/request-reset:
     post:
+      operationId: authRequestPasswordReset
       tags: [Auth]
       summary: Yêu cầu reset mật khẩu
+      description: Gửi email chứa link đặt lại mật khẩu
+      security: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                email: { type: string }
+            schema: { $ref: '#/components/schemas/RequestResetRequest' }
             example:
               email: "nguyenvana@haiphong.gov.vn"
       responses:
         '200':
           description: Email đã gửi
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
 
   /auth/reset-password:
     post:
+      operationId: authResetPassword
       tags: [Auth]
       summary: Đặt lại mật khẩu
+      description: Sử dụng token từ email để đặt mật khẩu mới
+      security: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                token: { type: string }
-                new_password: { type: string }
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
             example:
               token: "abc123"
               new_password: "newpass123"
       responses:
         '200':
           description: Đổi mật khẩu thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
 
   /auth/whoami:
     get:
+      operationId: authWhoami
       tags: [Auth]
       summary: Lấy thông tin user hiện tại
-      security:
-        - bearerAuth: []
+      description: Trả về thông tin của user đang đăng nhập từ JWT token
       responses:
         '200':
-          description: Thông tin user
+          description: Thông tin user hiện tại
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
   # ========== USERS ==========
   /users:
     get:
+      operationId: listUsers
       tags: [Users]
       summary: Danh sách user
-      security:
-        - bearerAuth: []
+      description: Lấy danh sách tất cả người dùng với filter và pagination
       parameters:
-        - in: query
-          name: page
-          schema: { type: integer, default: 1 }
-        - in: query
-          name: pageSize
-          schema: { type: integer, default: 20 }
-        - in: query
-          name: search
-          schema: { type: string }
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/PageSizeQueryParam'
+        - $ref: '#/components/parameters/SearchQueryParam'
         - in: query
           name: department
-          schema: { type: integer }
+          description: Lọc theo ID phòng ban
+          schema: { type: integer, minimum: 1 }
         - in: query
           name: role
-          schema: { type: integer }
+          description: Lọc theo ID vai trò
+          schema: { type: integer, minimum: 1 }
       responses:
         '200':
           description: Danh sách user
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/User' }
-                  meta: { $ref: '#/components/schemas/MetaPaging' }
+              schema: { $ref: '#/components/schemas/PagedUserResponse' }
               example:
                 data:
                   - id: 1
@@ -381,16 +1321,20 @@ paths:
                   page: 1
                   pageSize: 20
                   total: 150
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
     post:
+      operationId: createUser
       tags: [Users]
       summary: Tạo user mới
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/User' }
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
             example:
               username: "tranthib"
               email: "tranthib@hp.gov.vn"
@@ -405,108 +1349,134 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '409':
+          $ref: '#/components/responses/409Conflict'
 
   /users/{id}:
     get:
+      operationId: getUser
       tags: [Users]
       summary: Chi tiết user
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Thông tin user
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateUser
       tags: [Users]
       summary: Cập nhật user
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/User' }
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteUser
       tags: [Users]
       summary: Xóa user
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /users/{id}/password:
     put:
+      operationId: changeUserPassword
       tags: [Users]
       summary: Đổi mật khẩu user
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                new_password: { type: string }
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
             example:
               new_password: "newpass123"
       responses:
         '200':
           description: Đổi mật khẩu thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /users/{id}/logs:
     get:
+      operationId: getUserLogs
       tags: [Users]
       summary: Lịch sử thao tác user
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Danh sách logs
+          description: Danh sách logs của user
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TaskLog' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== ROLES ==========
   /roles:
     get:
+      operationId: listRoles
       tags: [Roles]
       summary: Danh sách roles
-      security:
-        - bearerAuth: []
       responses:
         '200':
           description: Danh sách roles
@@ -522,16 +1492,18 @@ paths:
                 - id: 2
                   name: "Manager"
                   description: "Quản lý"
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createRole
       tags: [Roles]
       summary: Tạo role mới
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Role' }
+            schema: { $ref: '#/components/schemas/CreateRoleRequest' }
             example:
               name: "Staff"
               description: "Nhân viên"
@@ -541,64 +1513,81 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Role' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '409':
+          $ref: '#/components/responses/409Conflict'
 
   /roles/{id}:
     get:
+      operationId: getRole
       tags: [Roles]
       summary: Chi tiết role
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Thông tin role
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Role' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateRole
       tags: [Roles]
       summary: Cập nhật role
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Role' }
+            schema: { $ref: '#/components/schemas/UpdateRoleRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Role' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteRole
       tags: [Roles]
       summary: Xóa role
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== PERMISSIONS ==========
   /permissions:
     get:
+      operationId: listPermissions
       tags: [Permissions]
       summary: Danh sách permissions
-      security:
-        - bearerAuth: []
       responses:
         '200':
           description: Danh sách permissions
@@ -614,17 +1603,18 @@ paths:
                 - id: 2
                   code: "task.delete"
                   description: "Xóa công việc"
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
   # ========== DEPARTMENTS ==========
   /departments:
     get:
+      operationId: listDepartments
       tags: [Departments]
       summary: Danh sách phòng ban
-      security:
-        - bearerAuth: []
       responses:
         '200':
-          description: Danh sách departments
+          description: Danh sách phòng ban
           content:
             application/json:
               schema:
@@ -639,16 +1629,18 @@ paths:
                   name: "Phòng Tài chính"
                   code: "TC"
                   parent_id: null
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createDepartment
       tags: [Departments]
       summary: Tạo phòng ban mới
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Department' }
+            schema: { $ref: '#/components/schemas/CreateDepartmentRequest' }
             example:
               name: "Phòng Kế hoạch"
               code: "KH"
@@ -657,67 +1649,87 @@ paths:
       responses:
         '201':
           description: Tạo thành công
-
-  /departments/{id}:
-    get:
-      tags: [Departments]
-      summary: Chi tiết phòng ban
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Thông tin department
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Department' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+
+  /departments/{id}:
+    get:
+      operationId: getDepartment
+      tags: [Departments]
+      summary: Chi tiết phòng ban
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Thông tin phòng ban
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateDepartment
       tags: [Departments]
       summary: Cập nhật phòng ban
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Department' }
+            schema: { $ref: '#/components/schemas/UpdateDepartmentRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Department' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteDepartment
       tags: [Departments]
       summary: Xóa phòng ban
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== POSITIONS ==========
   /positions:
     get:
+      operationId: listPositions
       tags: [Positions]
       summary: Danh sách chức vụ
-      security:
-        - bearerAuth: []
       responses:
         '200':
-          description: Danh sách positions
+          description: Danh sách chức vụ
           content:
             application/json:
               schema:
@@ -730,83 +1742,103 @@ paths:
                 - id: 2
                   name: "Trưởng phòng"
                   level: 5
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createPosition
       tags: [Positions]
       summary: Tạo chức vụ mới
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Position' }
+            schema: { $ref: '#/components/schemas/CreatePositionRequest' }
             example:
               name: "Phó phòng"
               level: 4
       responses:
         '201':
           description: Tạo thành công
-
-  /positions/{id}:
-    get:
-      tags: [Positions]
-      summary: Chi tiết chức vụ
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Thông tin position
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Position' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /positions/{id}:
+    get:
+      operationId: getPosition
+      tags: [Positions]
+      summary: Chi tiết chức vụ
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Thông tin chức vụ
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Position' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updatePosition
       tags: [Positions]
       summary: Cập nhật chức vụ
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Position' }
+            schema: { $ref: '#/components/schemas/UpdatePositionRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Position' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deletePosition
       tags: [Positions]
       summary: Xóa chức vụ
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== TASK CATEGORIES ==========
   /task-categories:
     get:
+      operationId: listTaskCategories
       tags: [TaskCategories]
       summary: Danh sách loại công việc
-      security:
-        - bearerAuth: []
       responses:
         '200':
-          description: Danh sách categories
+          description: Danh sách loại công việc
           content:
             application/json:
               schema:
@@ -817,16 +1849,18 @@ paths:
                   name: "Văn bản đi"
                   description: "Loại công việc văn bản đi"
                   is_active: true
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createTaskCategory
       tags: [TaskCategories]
-      summary: Tạo loại công việc
-      security:
-        - bearerAuth: []
+      summary: Tạo loại công việc mới
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskCategory' }
+            schema: { $ref: '#/components/schemas/CreateTaskCategoryRequest' }
             example:
               name: "Văn bản đến"
               description: "Loại công việc văn bản đến"
@@ -834,67 +1868,85 @@ paths:
       responses:
         '201':
           description: Tạo thành công
-
-  /task-categories/{id}:
-    get:
-      tags: [TaskCategories]
-      summary: Chi tiết loại công việc
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Thông tin category
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskCategory' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /task-categories/{id}:
+    get:
+      operationId: getTaskCategory
+      tags: [TaskCategories]
+      summary: Chi tiết loại công việc
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Thông tin loại công việc
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskCategory' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateTaskCategory
       tags: [TaskCategories]
       summary: Cập nhật loại công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskCategory' }
+            schema: { $ref: '#/components/schemas/UpdateTaskCategoryRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskCategory' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteTaskCategory
       tags: [TaskCategories]
       summary: Xóa loại công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== TASK PRIORITIES ==========
   /task-priorities:
     get:
+      operationId: listTaskPriorities
       tags: [TaskPriorities]
       summary: Danh sách mức ưu tiên
-      security:
-        - bearerAuth: []
       responses:
         '200':
-          description: Danh sách priorities
+          description: Danh sách mức ưu tiên
           content:
             application/json:
               schema:
@@ -905,16 +1957,18 @@ paths:
                   name: "Cao"
                   level: 1
                   is_default: false
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createTaskPriority
       tags: [TaskPriorities]
-      summary: Tạo mức ưu tiên
-      security:
-        - bearerAuth: []
+      summary: Tạo mức ưu tiên mới
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskPriority' }
+            schema: { $ref: '#/components/schemas/CreateTaskPriorityRequest' }
             example:
               name: "Trung bình"
               level: 2
@@ -922,67 +1976,85 @@ paths:
       responses:
         '201':
           description: Tạo thành công
-
-  /task-priorities/{id}:
-    get:
-      tags: [TaskPriorities]
-      summary: Chi tiết mức ưu tiên
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Thông tin priority
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskPriority' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+
+  /task-priorities/{id}:
+    get:
+      operationId: getTaskPriority
+      tags: [TaskPriorities]
+      summary: Chi tiết mức ưu tiên
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Thông tin mức ưu tiên
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPriority' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateTaskPriority
       tags: [TaskPriorities]
       summary: Cập nhật mức ưu tiên
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskPriority' }
+            schema: { $ref: '#/components/schemas/UpdateTaskPriorityRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskPriority' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteTaskPriority
       tags: [TaskPriorities]
       summary: Xóa mức ưu tiên
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== TASK STATUSES ==========
   /task-statuses:
     get:
+      operationId: listTaskStatuses
       tags: [TaskStatuses]
-      summary: Danh sách trạng thái
-      security:
-        - bearerAuth: []
+      summary: Danh sách trạng thái công việc
       responses:
         '200':
-          description: Danh sách statuses
+          description: Danh sách trạng thái
           content:
             application/json:
               schema:
@@ -993,16 +2065,18 @@ paths:
                   name: "Mới tạo"
                   code: "new"
                   is_closed_state: false
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createTaskStatus
       tags: [TaskStatuses]
-      summary: Tạo trạng thái
-      security:
-        - bearerAuth: []
+      summary: Tạo trạng thái mới
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskStatus' }
+            schema: { $ref: '#/components/schemas/CreateTaskStatusRequest' }
             example:
               name: "Đang xử lý"
               code: "processing"
@@ -1010,124 +2084,138 @@ paths:
       responses:
         '201':
           description: Tạo thành công
-
-  /task-statuses/{id}:
-    get:
-      tags: [TaskStatuses]
-      summary: Chi tiết trạng thái
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Thông tin status
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskStatus' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+
+  /task-statuses/{id}:
+    get:
+      operationId: getTaskStatus
+      tags: [TaskStatuses]
+      summary: Chi tiết trạng thái công việc
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+      responses:
+        '200':
+          description: Thông tin trạng thái
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskStatus' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateTaskStatus
       tags: [TaskStatuses]
       summary: Cập nhật trạng thái
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TaskStatus' }
+            schema: { $ref: '#/components/schemas/UpdateTaskStatusRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskStatus' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteTaskStatus
       tags: [TaskStatuses]
       summary: Xóa trạng thái
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
-            # ========== TASKS ==========
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  # ========== TASKS ==========
   /tasks:
     get:
+      operationId: listTasks
       tags: [Tasks]
       summary: Danh sách công việc
       description: Lấy danh sách task với filter, pagination, sort
-      security:
-        - bearerAuth: []
       parameters:
-        - in: query
-          name: page
-          schema: { type: integer, default: 1 }
-        - in: query
-          name: pageSize
-          schema: { type: integer, default: 20 }
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/PageSizeQueryParam'
+        - $ref: '#/components/parameters/SearchQueryParam'
+        - $ref: '#/components/parameters/SortQueryParam'
         - in: query
           name: status
-          schema: { type: integer }
+          description: Lọc theo ID trạng thái
+          schema: { type: integer, minimum: 1 }
         - in: query
           name: department
-          schema: { type: integer }
+          description: Lọc theo ID phòng ban
+          schema: { type: integer, minimum: 1 }
         - in: query
           name: assignee
-          schema: { type: integer }
+          description: Lọc theo ID người được gán
+          schema: { type: integer, minimum: 1 }
         - in: query
           name: priority
-          schema: { type: integer }
-        - in: query
-          name: search
-          schema: { type: string }
-        - in: query
-          name: sort
-          schema: { type: string, example: "-created_at,title" }
+          description: Lọc theo ID mức ưu tiên
+          schema: { type: integer, minimum: 1 }
       responses:
         '200':
-          description: Danh sách tasks
+          description: Danh sách công việc
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items: { $ref: '#/components/schemas/Task' }
-                  meta: { $ref: '#/components/schemas/MetaPaging' }
+              schema: { $ref: '#/components/schemas/PagedTaskResponse' }
               example:
                 data:
                   - id: 123
                     title: "Báo cáo tài chính Q1"
                     status_id: 2
                     priority_id: 1
-                    deadline: "2026-03-10"
+                    due_date: "2026-03-10"
                     progress: 50
                 meta:
                   page: 1
                   pageSize: 20
                   total: 89
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
     post:
+      operationId: createTask
       tags: [Tasks]
       summary: Tạo công việc mới
-      security:
-        - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Task' }
+            schema: { $ref: '#/components/schemas/CreateTaskRequest' }
             example:
               title: "Báo cáo tài chính Q1"
               description: "Cần hoàn thành báo cáo tổng kết..."
@@ -1146,68 +2234,89 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
 
   /tasks/{id}:
     get:
+      operationId: getTask
       tags: [Tasks]
       summary: Chi tiết công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Thông tin task
+          description: Thông tin công việc
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Task' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateTask
       tags: [Tasks]
       summary: Cập nhật công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Task' }
+            schema: { $ref: '#/components/schemas/UpdateTaskRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteTask
       tags: [Tasks]
       summary: Xóa công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/import:
     post:
+      operationId: importTasks
       tags: [Tasks]
       summary: Import tasks từ Excel
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required: [file]
               properties:
                 file: { type: string, format: binary }
       responses:
@@ -1215,121 +2324,141 @@ paths:
           description: Import thành công
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  imported: { type: integer, example: 25 }
-                  failed: { type: integer, example: 2 }
+              schema: { $ref: '#/components/schemas/ImportResultResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
 
   /tasks/{id}/assign:
     post:
+      operationId: assignTask
       tags: [Tasks]
-      summary: Gán người thực hiện
-      security:
-        - bearerAuth: []
+      summary: Gán người thực hiện (thay thế danh sách)
+      description: Gán nhiều người thực hiện cùng lúc, thay thế toàn bộ danh sách cũ
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                assignees:
-                  type: array
-                  items: { type: integer }
+            schema: { $ref: '#/components/schemas/AssignTaskRequest' }
             example:
               assignees: [5, 8, 12]
       responses:
         '200':
           description: Gán thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/subtask:
     post:
+      operationId: createSubtask
       tags: [Tasks]
-      summary: Tạo subtask
-      security:
-        - bearerAuth: []
+      summary: Tạo công việc con (subtask)
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Task' }
+            schema: { $ref: '#/components/schemas/CreateSubtaskRequest' }
             example:
               title: "Thu thập số liệu"
-              parent_task_id: 123
+              due_date: "2026-02-28"
       responses:
         '201':
           description: Tạo subtask thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/status:
     patch:
+      operationId: changeTaskStatus
       tags: [Tasks]
       summary: Đổi trạng thái công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                status_id: { type: integer }
-                progress: { type: integer }
+            schema: { $ref: '#/components/schemas/ChangeTaskStatusRequest' }
             example:
               status_id: 3
               progress: 80
       responses:
         '200':
           description: Đổi trạng thái thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
 
   /tasks/{id}/files:
     get:
+      operationId: listTaskFiles
       tags: [Tasks]
       summary: Danh sách file đính kèm
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Danh sách files
+          description: Danh sách file đính kèm
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TaskFile' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     post:
+      operationId: uploadTaskFile
       tags: [Tasks]
-      summary: Upload file
-      security:
-        - bearerAuth: []
+      summary: Upload file đính kèm
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
               type: object
+              required: [file]
               properties:
                 file: { type: string, format: binary }
       responses:
@@ -1338,57 +2467,64 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskFile' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/files/{file_id}:
     delete:
+      operationId: deleteTaskFile
       tags: [Tasks]
-      summary: Xóa file
-      security:
-        - bearerAuth: []
+      summary: Xóa file đính kèm
       parameters:
-        - in: path
-          name: id
+        - $ref: '#/components/parameters/IdPathParam'
+        - name: file_id
+          in: path
           required: true
-          schema: { type: integer }
-        - in: path
-          name: file_id
-          required: true
-          schema: { type: integer }
+          description: ID của file
+          schema: { type: integer, minimum: 1 }
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/logs:
     get:
+      operationId: listTaskLogs
       tags: [Tasks]
       summary: Lịch sử công việc
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Danh sách logs
+          description: Danh sách lịch sử hoạt động
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TaskLog' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/comments:
     get:
+      operationId: listTaskComments
       tags: [Tasks]
-      summary: Danh sách comment
-      security:
-        - bearerAuth: []
+      summary: Danh sách comment của công việc
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Danh sách comments
@@ -1396,141 +2532,149 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    user_id: { type: integer }
-                    content: { type: string }
-                    created_at: { type: string, format: date-time }
+                items: { $ref: '#/components/schemas/CommentResponse' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     post:
+      operationId: addTaskComment
       tags: [Tasks]
-      summary: Thêm comment
-      security:
-        - bearerAuth: []
+      summary: Thêm comment cho công việc
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                content: { type: string }
+            schema: { $ref: '#/components/schemas/AddCommentRequest' }
             example:
               content: "Đã hoàn thành phần thu thập số liệu"
       responses:
         '201':
           description: Thêm comment thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommentResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== TASK ASSIGNEES ==========
   /tasks/{id}/assignees:
     get:
+      operationId: listTaskAssignees
       tags: [TaskAssignees]
-      summary: Danh sách người được gán
-      security:
-        - bearerAuth: []
+      summary: Danh sách người được gán công việc
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Danh sách assignees
+          description: Danh sách người thực hiện
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    user_id: { type: integer }
-                    user_name: { type: string }
-                    is_primary: { type: boolean }
-                    assigned_at: { type: string, format: date-time }
+                items: { $ref: '#/components/schemas/AssigneeResponse' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     post:
+      operationId: addTaskAssignee
       tags: [TaskAssignees]
       summary: Thêm người thực hiện
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                user_id: { type: integer }
-                is_primary: { type: boolean }
+            schema: { $ref: '#/components/schemas/AddAssigneeRequest' }
             example:
               user_id: 8
               is_primary: false
       responses:
         '201':
           description: Thêm thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssigneeResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '409':
+          $ref: '#/components/responses/409Conflict'
 
   /tasks/{id}/assignees/{assign_id}:
-    delete:
-      tags: [TaskAssignees]
-      summary: Gỡ người thực hiện
-      security:
-        - bearerAuth: []
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
-        - in: path
-          name: assign_id
-          required: true
-          schema: { type: integer }
-      responses:
-        '204':
-          description: Gỡ thành công
-
     patch:
+      operationId: updateTaskAssignee
       tags: [TaskAssignees]
-      summary: Cập nhật assignee
-      security:
-        - bearerAuth: []
+      summary: Cập nhật thông tin người thực hiện
       parameters:
-        - in: path
-          name: id
+        - $ref: '#/components/parameters/IdPathParam'
+        - name: assign_id
+          in: path
           required: true
-          schema: { type: integer }
-        - in: path
-          name: assign_id
-          required: true
-          schema: { type: integer }
+          description: ID của bản ghi assignee
+          schema: { type: integer, minimum: 1 }
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                is_primary: { type: boolean }
-                active: { type: boolean }
+            schema: { $ref: '#/components/schemas/UpdateAssigneeRequest' }
       responses:
         '200':
           description: Cập nhật thành công
-            # ========== WORKFLOWS ==========
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AssigneeResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+    delete:
+      operationId: removeTaskAssignee
+      tags: [TaskAssignees]
+      summary: Gỡ người thực hiện
+      parameters:
+        - $ref: '#/components/parameters/IdPathParam'
+        - name: assign_id
+          in: path
+          required: true
+          description: ID của bản ghi assignee
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '204':
+          description: Gỡ thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+
+  # ========== WORKFLOWS ==========
   /workflows:
     get:
+      operationId: listWorkflows
       tags: [Workflows]
       summary: Danh sách workflow
-      security:
-        - bearerAuth: []
       responses:
         '200':
           description: Danh sách workflows
@@ -1539,16 +2683,18 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Workflow' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createWorkflow
       tags: [Workflows]
       summary: Tạo workflow mới
-      security:
-        - bearerAuth: []
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Workflow' }
+            schema: { $ref: '#/components/schemas/CreateWorkflowRequest' }
             example:
               name: "Quy trình phê duyệt văn bản"
               description: "3 bước: Trưởng phòng → Phó giám đốc → Giám đốc"
@@ -1556,85 +2702,103 @@ paths:
       responses:
         '201':
           description: Tạo thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workflow' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /workflows/{id}:
     get:
+      operationId: getWorkflow
       tags: [Workflows]
       summary: Chi tiết workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Thông tin workflow
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Workflow' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     patch:
+      operationId: updateWorkflow
       tags: [Workflows]
       summary: Cập nhật workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Workflow' }
+            schema: { $ref: '#/components/schemas/UpdateWorkflowRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Workflow' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteWorkflow
       tags: [Workflows]
       summary: Xóa workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /workflow-steps:
     get:
+      operationId: listWorkflowSteps
       tags: [Workflows]
       summary: Danh sách bước workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: query
-          name: workflow_id
-          schema: { type: integer }
+        - $ref: '#/components/parameters/WorkflowIdQueryParam'
       responses:
         '200':
-          description: Danh sách steps
+          description: Danh sách bước workflow
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/WorkflowStep' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createWorkflowStep
       tags: [Workflows]
-      summary: Tạo bước workflow
-      security:
-        - bearerAuth: []
+      summary: Tạo bước workflow mới
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/WorkflowStep' }
+            schema: { $ref: '#/components/schemas/CreateWorkflowStepRequest' }
             example:
               workflow_id: 1
               name: "Trưởng phòng duyệt"
@@ -1645,122 +2809,142 @@ paths:
       responses:
         '201':
           description: Tạo thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkflowStep' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /workflow-steps/{id}:
     patch:
+      operationId: updateWorkflowStep
       tags: [Workflows]
       summary: Cập nhật bước workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/WorkflowStep' }
+            schema: { $ref: '#/components/schemas/UpdateWorkflowStepRequest' }
       responses:
         '200':
           description: Cập nhật thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkflowStep' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
     delete:
+      operationId: deleteWorkflowStep
       tags: [Workflows]
       summary: Xóa bước workflow
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '204':
           description: Xóa thành công
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /tasks/{id}/approve:
     post:
+      operationId: approveTask
       tags: [Workflows]
-      summary: Phê duyệt công việc
-      security:
-        - bearerAuth: []
+      summary: Phê duyệt hoặc từ chối công việc
+      description: Người dùng có thẩm quyền phê duyệt hoặc từ chối công việc trong quy trình
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                action: { type: string, enum: [approve, reject] }
-                comments: { type: string }
+            schema: { $ref: '#/components/schemas/ApproveTaskRequest' }
             example:
               action: "approve"
               comments: "Đồng ý"
       responses:
         '200':
           description: Phê duyệt thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '422':
+          $ref: '#/components/responses/422UnprocessableEntity'
 
   /tasks/{id}/workflow-logs:
     get:
+      operationId: listTaskWorkflowLogs
       tags: [Workflows]
-      summary: Lịch sử workflow
-      security:
-        - bearerAuth: []
+      summary: Lịch sử phê duyệt workflow
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Timeline workflow
+          description: Timeline workflow của công việc
           content:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    step_name: { type: string }
-                    user_name: { type: string }
-                    action: { type: string }
-                    comments: { type: string }
-                    created_at: { type: string, format: date-time }
+                items: { $ref: '#/components/schemas/WorkflowLogEntry' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== NOTIFICATIONS ==========
   /notifications:
     get:
+      operationId: listNotifications
       tags: [Notifications]
       summary: Danh sách thông báo
-      security:
-        - bearerAuth: []
       parameters:
-        - in: query
-          name: unread
-          schema: { type: boolean }
+        - $ref: '#/components/parameters/UnreadQueryParam'
       responses:
         '200':
-          description: Danh sách notifications
+          description: Danh sách thông báo
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Notification' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
     post:
+      operationId: createNotification
       tags: [Notifications]
-      summary: Tạo/gửi thông báo
-      security:
-        - bearerAuth: []
+      summary: Tạo và gửi thông báo
       requestBody:
+        required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Notification' }
+            schema: { $ref: '#/components/schemas/CreateNotificationRequest' }
             example:
               user_id: 5
               content: "Task #123 đã được gán cho bạn"
@@ -1769,28 +2953,39 @@ paths:
       responses:
         '201':
           description: Gửi thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Notification' }
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /notifications/{id}/read:
     patch:
+      operationId: markNotificationRead
       tags: [Notifications]
-      summary: Đánh dấu đã đọc
-      security:
-        - bearerAuth: []
+      summary: Đánh dấu thông báo đã đọc
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Đánh dấu thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   /reminder:
     get:
+      operationId: listReminders
       tags: [Notifications]
       summary: Danh sách nhắc việc
-      security:
-        - bearerAuth: []
       responses:
         '200':
           description: Danh sách reminders
@@ -1798,98 +2993,97 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    task_id: { type: integer }
-                    remind_at: { type: string, format: date-time }
+                items: { $ref: '#/components/schemas/ReminderResponse' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
 
   /reminder/{id}/done:
     patch:
+      operationId: markReminderDone
       tags: [Notifications]
-      summary: Đánh dấu nhắc việc hoàn thành
-      security:
-        - bearerAuth: []
+      summary: Đánh dấu nhắc việc đã hoàn thành
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
           description: Đánh dấu thành công
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageResponse' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== LOGS ==========
   /logs:
     get:
+      operationId: listSystemLogs
       tags: [Logs]
       summary: Nhật ký hệ thống
-      security:
-        - bearerAuth: []
+      description: Lấy danh sách nhật ký hoạt động của hệ thống
       parameters:
         - in: query
           name: user
-          schema: { type: integer }
+          description: Lọc theo ID người dùng
+          schema: { type: integer, minimum: 1 }
         - in: query
           name: entity
-          schema: { type: string }
+          description: Lọc theo loại đối tượng (task, user, ...)
+          schema: { type: string, maxLength: 50 }
         - in: query
           name: action
-          schema: { type: string }
-        - in: query
-          name: from
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          schema: { type: string, format: date }
+          description: Lọc theo hành động
+          schema: { type: string, maxLength: 50 }
+        - $ref: '#/components/parameters/FromDateQueryParam'
+        - $ref: '#/components/parameters/ToDateQueryParam'
       responses:
         '200':
-          description: Danh sách logs
+          description: Danh sách logs hệ thống
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/TaskLog' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /logs/{id}:
     get:
+      operationId: getSystemLog
       tags: [Logs]
       summary: Chi tiết log entry
-      security:
-        - bearerAuth: []
       parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/IdPathParam'
       responses:
         '200':
-          description: Thông tin log
+          description: Thông tin log entry
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskLog' }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
 
   # ========== REPORTS ==========
   /reports/tasks-summary:
     get:
+      operationId: reportTasksSummary
       tags: [Reports]
       summary: Tổng hợp công việc
-      security:
-        - bearerAuth: []
+      description: Báo cáo tổng hợp số lượng công việc theo nhóm (phòng ban, trạng thái, người dùng)
       parameters:
-        - in: query
-          name: group_by
-          schema: { type: string, enum: [department, status, user] }
-        - in: query
-          name: from
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/GroupByQueryParam'
+        - $ref: '#/components/parameters/FromDateQueryParam'
+        - $ref: '#/components/parameters/ToDateQueryParam'
       responses:
         '200':
-          description: Báo cáo tổng hợp
+          description: Báo cáo tổng hợp công việc
           content:
             application/json:
               schema:
@@ -1900,28 +3094,27 @@ paths:
                     items:
                       type: object
                       properties:
-                        group: { type: string }
-                        total: { type: integer }
-                        completed: { type: integer }
-                        in_progress: { type: integer }
-                        overdue: { type: integer }
+                        group: { type: string, example: "Phòng Hành chính" }
+                        total: { type: integer, minimum: 0, example: 25 }
+                        completed: { type: integer, minimum: 0, example: 10 }
+                        in_progress: { type: integer, minimum: 0, example: 12 }
+                        overdue: { type: integer, minimum: 0, example: 3 }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /reports/progress-by-department:
     get:
+      operationId: reportProgressByDepartment
       tags: [Reports]
-      summary: Tiến độ theo phòng ban
-      security:
-        - bearerAuth: []
+      summary: Tiến độ công việc theo phòng ban
       parameters:
-        - in: query
-          name: from
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/FromDateQueryParam'
+        - $ref: '#/components/parameters/ToDateQueryParam'
       responses:
         '200':
-          description: Báo cáo tiến độ
+          description: Báo cáo tiến độ theo phòng ban
           content:
             application/json:
               schema:
@@ -1929,50 +3122,63 @@ paths:
                 items:
                   type: object
                   properties:
-                    department: { type: string }
-                    total_tasks: { type: integer }
-                    completion_rate: { type: number }
+                    department: { type: string, example: "Phòng Tài chính" }
+                    total_tasks: { type: integer, minimum: 0, example: 30 }
+                    completion_rate: { type: number, minimum: 0, maximum: 100, example: 66.7 }
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /reports/chart-progress:
     get:
+      operationId: reportChartProgress
       tags: [Reports]
-      summary: Dữ liệu biểu đồ
-      security:
-        - bearerAuth: []
+      summary: Dữ liệu biểu đồ tiến độ
       parameters:
         - in: query
           name: type
+          description: Loại biểu đồ
           schema: { type: string, enum: [pie, bar, line] }
-        - in: query
-          name: from
-          schema: { type: string, format: date }
-        - in: query
-          name: to
-          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/FromDateQueryParam'
+        - $ref: '#/components/parameters/ToDateQueryParam'
       responses:
         '200':
-          description: Dữ liệu chart
+          description: Dữ liệu biểu đồ
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  labels: { type: array, items: { type: string } }
-                  data: { type: array, items: { type: number } }
+                  labels:
+                    type: array
+                    items: { type: string }
+                    example: ["Mới tạo", "Đang xử lý", "Hoàn thành"]
+                  data:
+                    type: array
+                    items: { type: number }
+                    example: [10, 25, 15]
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
 
   /reports/export:
     get:
+      operationId: reportExport
       tags: [Reports]
-      summary: Xuất báo cáo
-      security:
-        - bearerAuth: []
+      summary: Xuất báo cáo ra file
       parameters:
         - in: query
           name: type
+          description: Định dạng file xuất
           schema: { type: string, enum: [excel, pdf] }
         - in: query
           name: report
+          description: Loại báo cáo cần xuất
           schema: { type: string }
+        - $ref: '#/components/parameters/FromDateQueryParam'
+        - $ref: '#/components/parameters/ToDateQueryParam'
       responses:
         '200':
           description: File báo cáo
@@ -1981,3 +3187,9 @@ paths:
               schema:
                 type: string
                 format: binary
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
