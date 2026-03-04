@@ -10,6 +10,24 @@
 
 ---
 
+## 0) Quy ước dữ liệu dùng chung (khuyến nghị)
+
+### 0.1 Soft delete / audit columns
+Khuyến nghị mọi bảng nghiệp vụ quan trọng có các cột sau (tuỳ hệ DB):
+- `created_at` (datetime, not null)
+- `updated_at` (datetime, not null)
+- `created_by` (FK -> users.id, nullable tuỳ bảng)
+- `updated_by` (FK -> users.id, nullable tuỳ bảng)
+- `deleted_at` (datetime, null) **hoặc** `deleted` (boolean, default false)
+- `deleted_by` (FK -> users.id, null) (nếu cần truy vết xóa)
+- `row_version` (int/bigint, default 1) (tuỳ chọn) để optimistic locking
+
+### 0.2 Chuẩn enum
+- Tránh enum “cứng” ở DB nếu hệ thống hay đổi; có thể dùng varchar + check constraint.
+- Nếu dùng enum, cần thống nhất với API docs.
+
+---
+
 ## 1) Nhóm danh mục dùng chung (Master Data)
 
 ### 1.1 DocumentType (Loại văn bản)
@@ -46,6 +64,11 @@
 - restrict_download (boolean, default false) — nếu true: chặn tải xuống (tuỳ chính sách)
 - restrict_print (boolean, default false) — nếu true: chặn in (tuỳ)
 - watermark_required (boolean, default false) — nếu true: bắt buộc watermark
+- is_active (boolean, default true)
+
+**Index**
+- unique(code)
+- level
 
 ---
 
@@ -65,6 +88,7 @@
 - phone (varchar(30), null)
 - email (varchar(100), null)
 - is_active (boolean, default true)
+- created_at, updated_at
 
 **Index**
 - name
@@ -82,6 +106,10 @@
 - is_active (boolean, default true)
 - created_at, updated_at
 
+**Index**
+- unique(code)
+- parent_id
+
 ---
 
 ### 2.2 Position (Chức vụ)
@@ -89,6 +117,7 @@
 - name (nvarchar(200), not null)
 - level (int, null) — để sắp xếp
 - is_active (boolean, default true)
+- created_at, updated_at
 
 ---
 
@@ -98,16 +127,24 @@
 - code (varchar(50), unique) — `van_thu`, `lanh_dao`, `truong_phong`, `chuyen_vien`, `luu_tru`, `admin`
 - name (nvarchar(200))
 - description (nvarchar(500), null)
+- is_active (boolean, default true)
+- created_at, updated_at
 
 **Permission**
 - id (PK)
-- code (varchar(100), unique) — ví dụ: `incoming.view`, `incoming.assign`, `outgoing.publish`, `audit.view`
+- code (varchar(100), unique) — ví dụ: `incoming.view`, `attachment.download`, `audit.view`
 - description (nvarchar(500), null)
+- is_active (boolean, default true)
+- created_at, updated_at
 
 **RolePermission**
 - role_id (FK)
 - permission_id (FK)
 - unique(role_id, permission_id)
+
+**Index**
+- permission(code)
+- role(code)
 
 ---
 
@@ -137,6 +174,7 @@
 - username unique
 - department_id
 - role_id
+- status
 
 ---
 
@@ -144,7 +182,7 @@
 - id (PK)
 - delegator_user_id (FK -> users.id) — người uỷ quyền
 - delegate_user_id (FK -> users.id) — người được uỷ quyền
-- scope (json/text) — phạm vi: loại văn bản nào, độ mật nào, module nào…
+- scope (json/text) — phạm vi: module nào, độ mật nào, department nào…
 - start_at (datetime)
 - end_at (datetime)
 - is_active (boolean, default true)
@@ -152,7 +190,13 @@
 
 **Ràng buộc**
 - end_at > start_at
-- không cho uỷ quyền vòng (A→B và B→A) (tuỳ mức chặt)
+- (khuyến nghị) Không cho uỷ quyền trùng thời gian quá nhiều bản ghi cho cùng delegator
+
+**Index**
+- delegator_user_id
+- delegate_user_id
+- start_at, end_at
+- is_active
 
 ---
 
@@ -161,11 +205,11 @@
 ### 3.1 IncomingDocument
 **Nhóm định danh & thông tin gốc**
 - id (PK)
-- doc_code (varchar(50), unique, not null) — mã nội bộ (UUID/chuỗi), để API/UI dùng ổn định
+- doc_code (varchar(50), unique, not null) — mã nội bộ (UUID/ULID), để API/UI dùng ổn định
 - incoming_number (varchar(50), null) — số đến (nếu có)
 - symbol_number (varchar(100), null) — số/ký hiệu trên văn bản
-- document_name (nvarchar(500), not null) — tiêu đề/tên văn bản (tuỳ bạn)
-- summary (nvarchar(2000), null) — trích yếu
+- document_name (nvarchar(500), not null)
+- summary (nvarchar(2000), null)
 
 **Nhóm phân loại**
 - document_type_id (FK -> document_types.id, null)
@@ -175,29 +219,30 @@
 
 **Nhóm nguồn gửi**
 - sender_org_id (FK -> organizations.id, null)
-- signer (nvarchar(200), null) — người ký
-- position_signer (nvarchar(200), null) — chức vụ người ký (tuỳ)
-- issued_date (date, null) — ngày ban hành trên văn bản
-- received_date (date, null) — ngày đến/tiếp nhận
+- signer (nvarchar(200), null)
+- position_signer (nvarchar(200), null)
+- issued_date (date, null)
+- received_date (date, null)
 - received_channel (enum: paper, email, portal, other) null
 
 **Nhóm xử lý**
 - status (enum):
-  - draft (mới tạo nháp)
-  - received (đã tiếp nhận)
-  - submitted (đã trình)
-  - assigned (đã giao xử lý)
-  - processing (đang xử lý)
-  - completed (đã hoàn thành xử lý)
-  - archived (đã lưu trữ)
-  - cancelled (huỷ/không xử lý)
-- due_date (date, null) — hạn xử lý
-- owner_department_id (FK -> departments.id, null) — đơn vị chủ quản/đầu mối
+  - draft
+  - received
+  - submitted
+  - assigned
+  - processing
+  - completed
+  - archived
+  - cancelled
+- due_date (date, null)
+- owner_department_id (FK -> departments.id, null)
 - created_by (FK -> users.id, not null)
 - created_at, updated_at
 
-**Nhóm bảo mật**
-- allow_download (boolean, default true) — tuỳ chính sách theo độ mật
+**Nhóm bảo mật (policy snapshot)**
+> Có thể lấy từ ConfidentialityLevel, nhưng khuyến nghị lưu snapshot tại document để áp chính sách theo thời điểm.
+- allow_download (boolean, default true)
 - allow_print (boolean, default true)
 - watermark_required (boolean, default false)
 
@@ -207,11 +252,9 @@
 - received_date
 - due_date
 - sender_org_id
+- owner_department_id
 - confidentiality_level_id
 - status
-
-**Ràng buộc gợi ý**
-- Khi `confidentiality_level` cao → ép `allow_download=false` hoặc yêu cầu watermark (tuỳ quy định)
 
 ---
 
@@ -219,11 +262,12 @@
 - id (PK)
 - incoming_document_id (FK -> incoming_documents.id, on delete cascade)
 - file_name (nvarchar(255), not null)
-- file_path (varchar(500), not null) — đường dẫn lưu trữ
+- file_path (varchar(500), not null)
 - file_type (varchar(50), null) — pdf, docx, jpg…
 - file_size (bigint, null)
-- sha256 (varchar(64), null) — kiểm tra toàn vẹn (khuyến nghị)
-- is_main (boolean, default false) — file chính
+- sha256 (varchar(64), null) — khuyến nghị
+- is_main (boolean, default false)
+- note (nvarchar(500), null)
 - uploaded_by (FK -> users.id)
 - uploaded_at (datetime)
 - deleted (boolean, default false)
@@ -231,6 +275,7 @@
 **Index**
 - incoming_document_id
 - is_main
+- deleted
 
 ---
 
@@ -240,8 +285,8 @@
 **Nhóm định danh**
 - id (PK)
 - doc_code (varchar(50), unique, not null)
-- outgoing_number (varchar(50), null) — số đi (nếu có)
-- symbol_number (varchar(100), null) — số/ký hiệu
+- outgoing_number (varchar(50), null)
+- symbol_number (varchar(100), null)
 
 **Nội dung**
 - document_name (nvarchar(500), not null)
@@ -255,16 +300,16 @@
 
 **Thông tin ban hành**
 - signer (nvarchar(200), null)
-- issued_date (date, null) — ngày ký/ngày ban hành
-- publish_date (date, null) — ngày phát hành/gửi đi
+- issued_date (date, null)
+- publish_date (date, null)
 - status (enum):
   - draft
-  - in_review (đang trình duyệt)
-  - approved (đã duyệt)
-  - signed (đã ký/đã ký số)
-  - published (đã phát hành)
-  - recalled (thu hồi)
-  - archived (lưu trữ)
+  - in_review
+  - approved
+  - signed
+  - published
+  - recalled
+  - archived
 - created_by (FK -> users.id)
 - created_at, updated_at
 
@@ -280,42 +325,59 @@
 ### 4.2 OutgoingDocumentVersion (Phiên bản/dự thảo)
 - id (PK)
 - outgoing_document_id (FK -> outgoing_documents.id, on delete cascade)
-- version_no (int, not null) — 1,2,3…
+- version_no (int, not null)
 - title (nvarchar(500), null)
-- content_text (text, null) — nếu lưu nội dung; hoặc chỉ lưu file
+- content_text (text, null)
 - created_by (FK -> users.id)
 - created_at
 - is_current (boolean, default false)
 
 **Ràng buộc**
 - unique(outgoing_document_id, version_no)
-- chỉ 1 bản `is_current=true` (tuỳ)
+
+**Index**
+- outgoing_document_id
+- is_current
 
 ---
 
 ### 4.3 OutgoingDocumentAttachment
 - id (PK)
 - outgoing_document_id (FK)
-- file_name, file_path, file_type, file_size, sha256
-- is_main (boolean)
-- uploaded_by, uploaded_at
-- deleted (boolean)
+- file_name (nvarchar(255), not null)
+- file_path (varchar(500), not null)
+- file_type (varchar(50), null)
+- file_size (bigint, null)
+- sha256 (varchar(64), null)
+- is_main (boolean, default false)
+- note (nvarchar(500), null)
+- uploaded_by (FK -> users.id)
+- uploaded_at (datetime)
+- deleted (boolean, default false)
+
+**Index**
+- outgoing_document_id
+- is_main
+- deleted
 
 ---
 
 ### 4.4 OutgoingRecipient (Nơi nhận / lịch sử gửi)
 - id (PK)
 - outgoing_document_id (FK)
-- recipient_org_id (FK -> organizations.id, nullable) — nơi nhận là cơ quan
-- recipient_name (nvarchar(255), null) — nếu gửi cá nhân/đơn vị không nằm trong danh mục
+- recipient_org_id (FK -> organizations.id, nullable)
+- recipient_name (nvarchar(255), null) — nếu không thuộc danh mục
 - method (enum: paper, email, portal, other)
 - sent_at (datetime, null)
 - status (enum: pending, sent, failed, confirmed) default pending
 - note (nvarchar(500), null)
+- created_at
 
 **Index**
 - outgoing_document_id
 - recipient_org_id
+- status
+- sent_at
 
 ---
 
@@ -323,31 +385,30 @@
 - id (PK)
 - incoming_document_id (FK -> incoming_documents.id)
 - outgoing_document_id (FK -> outgoing_documents.id)
-- link_type (enum: reply, reference, related) — trả lời/căn cứ/liên quan
+- link_type (enum: reply, reference, related)
 - created_at
 
 **Ràng buộc**
 - unique(incoming_document_id, outgoing_document_id, link_type)
 
+**Index**
+- incoming_document_id
+- outgoing_document_id
+- link_type
+
 ---
 
-## 5) Giao xử lý – bút phê – timeline (dùng chung cho VB đến và/hoặc VB đi)
+## 5) Giao xử lý – bút phê – timeline (dùng chung)
 
 ### 5.1 Assignment (Giao xử lý)
-> Có 2 cách:
-> - Cách A: tách riêng IncomingAssignment / OutgoingAssignment
-> - Cách B: 1 bảng dùng chung, có `document_kind` + `document_id`
->
-> Ở đây mô tả theo cách B (dùng chung) để app dễ mở rộng.
-
 - id (PK)
 - document_kind (enum: incoming, outgoing)
-- document_id (int) — id văn bản tương ứng
-- assigned_by (FK -> users.id) — ai giao
-- assignee_department_id (FK -> departments.id, null) — giao cho đơn vị
-- assignee_user_id (FK -> users.id, null) — hoặc giao cho cá nhân
-- assign_role (enum: primary, cooperate, notify) — chủ trì/phối hợp/để biết
-- directive (nvarchar(2000), null) — nội dung giao việc/chỉ đạo
+- document_id (int)
+- assigned_by (FK -> users.id)
+- assignee_department_id (FK -> departments.id, null)
+- assignee_user_id (FK -> users.id, null)
+- assign_role (enum: primary, cooperate, notify)
+- directive (nvarchar(2000), null)
 - assigned_at (datetime)
 - due_date (date, null)
 - status (enum: new, accepted, processing, completed, rejected, revoked)
@@ -356,8 +417,8 @@
 - revoke_reason (nvarchar(500), null)
 
 **Ràng buộc**
-- Phải có ít nhất 1 trong 2: assignee_department_id hoặc assignee_user_id
-- Khi revoked → bắt buộc revoke_reason
+- assignee_department_id hoặc assignee_user_id phải có ít nhất 1
+- revoked => revoke_reason not null
 
 **Index**
 - (document_kind, document_id)
@@ -373,14 +434,58 @@
 - document_kind (incoming/outgoing)
 - document_id (int)
 - author_user_id (FK -> users.id)
-- comment_type (enum: directive, comment, note) — bút phê/ý kiến/ghi chú
+- comment_type (enum: directive, comment, note)
 - content (nvarchar(4000) or text, not null)
 - created_at
 - edited_at (datetime, null)
 - edit_reason (nvarchar(255), null)
+- deleted (boolean, default false) (tuỳ policy)
 
 **Khuyến nghị**
-- Với “bút phê” quan trọng: hạn chế sửa/xoá; nếu cho sửa phải lưu version.
+- Với directive quan trọng: không cho xoá/sửa hoặc lưu version.
+
+**Index**
+- (document_kind, document_id)
+- author_user_id
+- created_at
+
+---
+
+## 5.3 (BỔ SUNG) DocumentTimelineEvent (Timeline nghiệp vụ – khuyến nghị)
+> Tách khỏi AuditLog để timeline “đúng nghiệp vụ” và query nhanh.
+
+- id (PK)
+- document_kind (incoming/outgoing)
+- document_id (int)
+- event (varchar(50), not null)  
+  Ví dụ: `created`, `metadata_updated`, `status_changed`, `assignment_created`, `assignment_completed`,
+  `comment_created`, `comment_updated`, `attachment_uploaded`, `attachment_deleted`, `published`, `recalled`
+- note (nvarchar(2000), null) — mô tả ngắn để hiển thị
+- actor_user_id (FK -> users.id, null) — ai thực hiện (null nếu system)
+- metadata_json (json/text, null) — before/after hoặc thông tin bổ sung
+- created_at (datetime)
+
+**Index**
+- (document_kind, document_id), created_at
+- actor_user_id, created_at
+- event, created_at
+
+---
+
+## 5.4 (BỔ SUNG) DocumentStatusHistory (lịch sử đổi trạng thái – tuỳ chọn)
+> Nếu muốn audit/trace state machine rõ hơn timeline.
+
+- id (PK)
+- document_kind (incoming/outgoing)
+- document_id (int)
+- from_status (varchar(30), null)
+- to_status (varchar(30), not null)
+- changed_by (FK -> users.id, null)
+- change_reason (nvarchar(500), null)
+- created_at (datetime)
+
+**Index**
+- (document_kind, document_id), created_at
 
 ---
 
@@ -389,43 +494,85 @@
 ### 6.1 AuditLog
 - id (PK)
 - user_id (FK -> users.id, null) — null nếu system
-- action (varchar(50), not null) — `login`, `view_document`, `download_file`, `print`, `assign`, `revoke_assign`, `update_metadata`, `publish_outgoing`, ...
+- action (varchar(50), not null) — `login`, `view_document`, `preview_file`, `download_file`, `print`, `export`, ...
 - document_kind (incoming/outgoing/null)
 - document_id (int, null)
 - attachment_id (int, null)
-- entity_type (varchar(50), null) — nếu log cho danh mục/user…
+- entity_type (varchar(50), null)
 - entity_id (int, null)
 - result (enum: success, denied, failed) default success
 - ip_address (varchar(45), null)
 - user_agent (varchar(300), null)
-- metadata_json (json/text, null) — chi tiết trước/sau, lý do, payload rút gọn
+- metadata_json (json/text, null)
 - created_at (datetime)
 
 **Index**
 - user_id, created_at
 - action, created_at
 - (document_kind, document_id), created_at
+- attachment_id, created_at
 
-**Rủi ro/điểm cần chú ý**
-- Log sẽ rất lớn → cần retention/partition/index tốt.
-- Không cho sửa/xoá log (append-only) hoặc chỉ super admin theo quy trình.
-
----
-
-## 7) Gợi ý kiểu dữ liệu & validate tối thiểu
-- Các trường số/ký hiệu: giới hạn độ dài, loại bỏ ký tự nguy hiểm, chuẩn hoá khoảng trắng
-- File: giới hạn dung lượng; whitelist file_type; hash sha256 để kiểm tra toàn vẹn
-- `doc_code`: nên dùng UUID/ULID để API ổn định, tránh đoán ID
-- `confidentiality_level_id`: bắt buộc, vì mọi văn bản phải có mức độ bảo mật
+**Khuyến nghị**
+- Partition theo tháng/quý nếu dữ liệu lớn.
+- Append-only: không cho update/delete.
 
 ---
 
-## 8) Mapping nhanh sang API (để làm app)
-- Incoming:
-  - Tạo/sửa văn bản đến + upload file + trình bút phê + giao xử lý + xem timeline + audit
-- Outgoing:
-  - Tạo/sửa văn bản đi + version + trình duyệt + phát hành + nơi nhận + liên kết incoming + audit
-- Search/export:
-  - Filter theo các trường index mạnh: symbol_number, incoming_number/outgoing_number, org, date, status, confidentiality, urgency, assignee
+## 7) Notifications (Thông báo)
+
+### 7.1 (BỔ SUNG) Notification
+- id (PK)
+- user_id (FK -> users.id, not null) — người nhận
+- type (varchar(30), not null) — `assignment`, `deadline`, `document`, `system`...
+- content (nvarchar(500), not null)
+- ref_kind (varchar(30), null) — `incoming`, `outgoing`, `assignment`...
+- ref_id (int, null)
+- read_at (datetime, null)
+- created_at (datetime, not null)
+
+**Index**
+- user_id, created_at
+- user_id, read_at
+
+### 7.2 (BỔ SUNG) NotificationDevice (push token) (tuỳ chọn)
+- id (PK)
+- user_id (FK -> users.id)
+- platform (enum: ios, android, web)
+- device_token (varchar(255))
+- is_active (boolean, default true)
+- last_seen_at (datetime, null)
+- created_at
+
+**Index**
+- user_id
+- device_token unique
+
+---
+
+## 8) Search/Export (tuỳ chọn nâng cao)
+
+### 8.1 (BỔ SUNG) SavedFilter (lưu bộ lọc)
+- id (PK)
+- user_id (FK -> users.id)
+- name (nvarchar(100))
+- kind (enum: incoming, outgoing, all)
+- filter_json (json/text) — lưu query/search/sort
+- created_at, updated_at
+- is_active (boolean, default true)
+
+**Index**
+- user_id
+- kind
+
+---
+
+## 9) Gợi ý validate tối thiểu
+- Chuẩn hoá khoảng trắng, cấm ký tự nguy hiểm trong số/ký hiệu.
+- File:
+  - giới hạn dung lượng,
+  - whitelist MIME/type,
+  - tính sha256,
+  - (tuỳ chọn) virus scan.
+- `doc_code`: ưu tiên UUID/ULID để không đoán được ID.
 
 ---
