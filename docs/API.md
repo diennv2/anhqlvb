@@ -4,6 +4,7 @@
 > - Có headers, auth, paging/filter/sort
 > - Có request/response schema + ví dụ
 > - Có các endpoint “đúng đời thực”: upload/preview/download file, timeline, giao xử lý, bút phê, audit log
+> - Có RBAC + độ mật (tách quyền metadata vs file), delegation, dispatch log, link incoming↔outgoing
 >
 > Base URL ví dụ: `https://api.example.com/api/v1`
 
@@ -18,26 +19,30 @@
 6. [Chuẩn lỗi](#6-chuẩn-lỗi)
 7. [Auth endpoints](#7-auth-endpoints)
 8. [User/Role/Department/Position](#8-userroledepartmentposition)
-9. [Danh mục nghiệp vụ văn bản](#9-danh-mục-nghiệp-vụ-văn-bản)
-10. [Incoming Documents – Văn bản đến](#10-incoming-documents--văn-bản-đến)
-11. [Outgoing Documents – Văn bản đi](#11-outgoing-documents--văn-bản-đi)
-12. [Attachments (File) – Upload/Preview/Download](#12-attachments-file--uploadpreviewdownload)
-13. [Assignments – Giao xử lý](#13-assignments--giao-xử-lý)
-14. [Comments/Directives – Bút phê/Ý kiến](#14-commentsdirectives--bút-phêý-kiến)
-15. [Timeline – Lịch sử xử lý](#15-timeline--lịch-sử-xử-lý)
-16. [Search/Export](#16-searchexport)
-17. [Notifications](#17-notifications)
-18. [Audit Logs](#18-audit-logs)
-19. [Phân quyền (RBAC + độ mật) – quy ước thực thi](#19-phân-quyền-rbac--độ-mật--quy-ước-thực-thi)
-20. [Checklist MVP (đủ để làm app)](#20-checklist-mvp-đủ-để-làm-app)
+9. [Delegations (Uỷ quyền xử lý)](#9-delegations-uỷ-quyền-xử-lý)
+10. [Danh mục nghiệp vụ văn bản](#10-danh-mục-nghiệp-vụ-văn-bản)
+11. [Incoming Documents – Văn bản đến](#11-incoming-documents--văn-bản-đến)
+12. [Outgoing Documents – Văn bản đi](#12-outgoing-documents--văn-bản-đi)
+13. [Recipients/Dispatch Log – Nơi nhận VB đi](#13-recipientsdispatch-log--nơi-nhận-vb-đi)
+14. [Document Links – Liên kết VB đến/đi](#14-document-links--liên-kết-vb-đếnđi)
+15. [Attachments (File) – Upload/Preview/Download](#15-attachments-file--uploadpreviewdownload)
+16. [Assignments – Giao xử lý](#16-assignments--giao-xử-lý)
+17. [Comments/Directives – Bút phê/Ý kiến](#17-commentsdirectives--bút-phêý-kiến)
+18. [Timeline – Lịch sử xử lý](#18-timeline--lịch-sử-xử-lý)
+19. [Search/Export](#19-searchexport)
+20. [Notifications](#20-notifications)
+21. [Audit Logs](#21-audit-logs)
+22. [Phân quyền (RBAC + độ mật) – quy ước thực thi](#22-phân-quyền-rbac--độ-mật--quy-ước-thực-thi)
+23. [Checklist MVP (đủ để làm app)](#23-checklist-mvp-đủ-để-làm-app)
 
 ---
 
 ## 1. Quy ước chung
-- Format JSON: `snake_case` (nhất quán với backend phổ biến)
+- Format JSON: `snake_case`
 - Time: ISO 8601 UTC (ví dụ `2026-03-03T10:15:30Z`)
-- ID: integer tăng dần (DB), nhưng FE nên dùng `doc_code` để hiển thị/định danh ổn định (không đoán ID).
-- Độ mật/độ khẩn: lấy theo master data, FE dùng id + code.
+- ID: integer tăng dần (DB). UI/FE nên dùng `doc_code` để hiển thị/định danh ổn định (không đoán ID).
+- Độ mật/độ khẩn: lấy theo master data, FE dùng `id` + `code`.
+- Paging: `page=1` default, `page_size=20` default, `page_size` max 200.
 
 ---
 
@@ -54,7 +59,7 @@
 
 ### 2.2 Response headers (khuyến nghị)
 - `X-Request-Id`: echo lại
-- `Cache-Control`: với master data có thể cache (tuỳ)
+- `Cache-Control`: với master data có thể cache
 
 ---
 
@@ -63,8 +68,9 @@
 - `access_token`: dùng gọi API, TTL ngắn
 - `refresh_token`: làm mới token, TTL dài
 
-### 3.2 Quy tắc thực tế cho app
-- FE lưu token (secure storage), tự refresh khi gặp 401 token_expired
+### 3.2 Quy tắc cho app
+- FE lưu token (secure storage), tự refresh khi gặp:
+  - HTTP 401 + `error=token_expired`
 - Logout: xoá token, (tuỳ) gọi API revoke refresh token
 
 ---
@@ -82,7 +88,7 @@
 ### 4.2 Response detail
 ```json
 {
-  "data": { },
+  "data": {},
   "request_id": "a1b2c3"
 }
 ```
@@ -98,9 +104,8 @@
 ---
 
 ## 5. Phân trang/Lọc/Sắp xếp
-- `page` (default 1)
-- `page_size` (default 20, max 200)
-- `search` (chuỗi tìm kiếm)
+- `page`, `page_size`
+- `search`
 - `sort` (ví dụ `-created_at,received_date`)
 
 ---
@@ -117,10 +122,13 @@
   "request_id": "a1b2c3"
 }
 ```
-Mã lỗi gợi ý:
-- `unauthorized`, `forbidden`, `not_found`
-- `validation_error`, `conflict`
-- `business_rule_violation` (422)
+
+Mã lỗi chuẩn hoá (gợi ý):
+- 401: `unauthorized`, `token_expired`
+- 403: `forbidden`
+- 404: `not_found`
+- 409: `conflict`
+- 422: `validation_error`, `business_rule_violation`
 
 ---
 
@@ -131,6 +139,7 @@ Mã lỗi gợi ý:
 ```json
 { "username": "vanthu01", "password": "123456" }
 ```
+
 **Response 200**
 ```json
 {
@@ -146,6 +155,7 @@ Mã lỗi gợi ý:
 ```json
 { "refresh_token": "eyJhbGciOi..." }
 ```
+
 **Response 200**
 ```json
 {
@@ -177,12 +187,12 @@ Mã lỗi gợi ý:
 }
 ```
 
-### 7.4 POST `/auth/logout` (khuyến nghị)
-Dùng để revoke refresh token (nếu backend quản lý token)
+### 7.4 POST `/auth/logout`
 **Request**
 ```json
 { "refresh_token": "eyJhbGciOi..." }
 ```
+
 **Response 200**
 ```json
 { "message": "Đã đăng xuất" }
@@ -195,6 +205,7 @@ Dùng để revoke refresh token (nếu backend quản lý token)
 
 ### 8.1 GET `/users`
 Query: `page,page_size,search,department_id,role_id,status`
+
 **Response 200**
 ```json
 {
@@ -206,7 +217,8 @@ Query: `page,page_size,search,department_id,role_id,status`
       "email": "vanthu01@gov.vn",
       "phone": "0912345678",
       "status": "active",
-      "department": { "id": 1, "name": "Phòng Hành chính" },
+      "department": { "id": 1, "code": "HC", "name": "Phòng Hành chính" },
+      "position": { "id": 1, "name": "Văn thư" },
       "role": { "id": 2, "code": "van_thu", "name": "Văn thư" }
     }
   ],
@@ -215,55 +227,210 @@ Query: `page,page_size,search,department_id,role_id,status`
 ```
 
 ### 8.2 POST `/users`
-### 8.3 GET `/users/{id}`
-### 8.4 PATCH `/users/{id}`
-### 8.5 DELETE `/users/{id}`
-### 8.6 PUT `/users/{id}/password`
-### 8.7 GET `/users/{id}/audit-logs` (thay cho logs kiểu task)
-
----
-
-## 9. Danh mục nghiệp vụ văn bản (Master Data)
-
-### 9.1 Document Types
-- GET `/document-types`
-- POST `/document-types`
-- PATCH `/document-types/{id}`
-- DELETE `/document-types/{id}` (thực tế nên chuyển thành inactive)
-
-**Response GET**
+**Request**
 ```json
 {
-  "data": [
-    { "id": 1, "code": "CV", "name": "Công văn", "is_active": true },
-    { "id": 2, "code": "QD", "name": "Quyết định", "is_active": true }
-  ]
+  "username": "user01",
+  "password": "123456",
+  "full_name": "Nguyễn Văn A",
+  "email": "user01@gov.vn",
+  "phone": "0900000000",
+  "department_id": 1,
+  "position_id": 1,
+  "role_id": 2,
+  "status": "active",
+  "must_change_password": true
 }
 ```
 
-### 9.2 Urgency Levels
-- GET `/urgency-levels`
+**Response 201**
+```json
+{ "data": { "id": 99 } }
+```
 
-### 9.3 Confidentiality Levels
-- GET `/confidentiality-levels`
+### 8.3 GET `/users/{id}`
+**Response 200**
+```json
+{
+  "data": {
+    "id": 99,
+    "username": "user01",
+    "full_name": "Nguyễn Văn A",
+    "email": "user01@gov.vn",
+    "phone": "0900000000",
+    "status": "active",
+    "department": { "id": 1, "code": "HC", "name": "Phòng Hành chính" },
+    "position": { "id": 1, "name": "Văn thư" },
+    "role": { "id": 2, "code": "van_thu", "name": "Văn thư" }
+  }
+}
+```
 
-### 9.4 Organizations
-- GET `/organizations`
-- POST `/organizations`
+### 8.4 PATCH `/users/{id}`
+**Request**
+```json
+{
+  "full_name": "Nguyễn Văn A (cập nhật)",
+  "phone": "0911111111",
+  "department_id": 2,
+  "position_id": 3,
+  "role_id": 4,
+  "status": "active"
+}
+```
 
-### 9.5 Field Sectors
-- GET `/field-sectors`
+**Response 200**
+```json
+{ "message": "Cập nhật thành công" }
+```
 
-> App cần cache master data để load nhanh màn “Nhập văn bản”.
+### 8.5 DELETE `/users/{id}`
+**Response 200**
+```json
+{ "message": "Đã xoá" }
+```
+
+### 8.6 PUT `/users/{id}/password`
+**Request**
+```json
+{
+  "new_password": "NewPass@123",
+  "force_logout": true
+}
+```
+
+**Response 200**
+```json
+{ "message": "Đổi mật khẩu thành công" }
+```
+
+### 8.7 GET `/users/{id}/audit-logs`
+Query: `page,page_size,from,to,action`
+> Shortcut cho audit-logs theo user.
 
 ---
 
-## 10. Incoming Documents – Văn bản đến
+### 8.8 Departments
+- GET `/departments`
+- POST `/departments`
+- GET `/departments/{id}`
+- PATCH `/departments/{id}`
+- DELETE `/departments/{id}` (khuyến nghị: inactive)
 
-### 10.1 GET `/incoming-documents`
-**Query thực tế cho app**
+**Department schema**
+```json
+{
+  "id": 1,
+  "code": "HC",
+  "name": "Phòng Hành chính",
+  "parent_id": null,
+  "is_active": true
+}
+```
+
+---
+
+### 8.9 Positions
+- GET `/positions`
+- POST `/positions`
+- PATCH `/positions/{id}`
+- DELETE `/positions/{id}` (inactive)
+
+---
+
+### 8.10 Roles & Permissions
+- GET `/roles`
+- POST `/roles`
+- PATCH `/roles/{id}`
+- DELETE `/roles/{id}` (inactive)
+- GET `/permissions`
+- PUT `/roles/{id}/permissions`
+
+**PUT role permissions – Request**
+```json
+{
+  "permission_ids": [1, 2, 3, 10]
+}
+```
+
+**Response 200**
+```json
+{ "message": "Cập nhật quyền thành công" }
+```
+
+---
+
+## 9. Delegations (Uỷ quyền xử lý)
+> Dùng khi người uỷ quyền vắng mặt. Delegation phải được áp vào rule RBAC/độ mật khi check quyền xem/xử lý.
+
+### 9.1 GET `/delegations`
+Query: `page,page_size,delegator_user_id,delegate_user_id,is_active`
+
+### 9.2 POST `/delegations`
+**Request**
+```json
+{
+  "delegator_user_id": 12,
+  "delegate_user_id": 33,
+  "scope": {
+    "modules": ["incoming", "outgoing"],
+    "confidentiality_codes": ["public", "confidential", "secret"],
+    "department_ids": [1, 2]
+  },
+  "start_at": "2026-03-01T00:00:00Z",
+  "end_at": "2026-03-10T23:59:59Z"
+}
+```
+
+**Response 201**
+```json
+{ "data": { "id": 5001 } }
+```
+
+### 9.3 POST `/delegations/{id}/revoke`
+**Request**
+```json
+{ "reason": "Kết thúc uỷ quyền sớm" }
+```
+
+**Response 200**
+```json
+{ "message": "Đã thu hồi uỷ quyền" }
+```
+
+---
+
+## 10. Danh mục nghi���p vụ văn bản (Master Data)
+
+### 10.1 Document Types
+- GET `/document-types`
+- POST `/document-types`
+- PATCH `/document-types/{id}`
+- DELETE `/document-types/{id}` (thực tế nên chuyển inactive)
+
+### 10.2 Urgency Levels
+- GET `/urgency-levels`
+
+### 10.3 Confidentiality Levels
+- GET `/confidentiality-levels`
+
+### 10.4 Organizations
+- GET `/organizations`
+- POST `/organizations`
+- PATCH `/organizations/{id}` (khuyến nghị)
+- DELETE `/organizations/{id}` (inactive)
+
+### 10.5 Field Sectors
+- GET `/field-sectors`
+
+---
+
+## 11. Incoming Documents – Văn bản đến
+
+### 11.1 GET `/incoming-documents`
+Query:
 - paging: `page,page_size`
-- search: `search` (tìm theo số/ký hiệu, trích yếu)
+- search: `search`
 - filter:
   - `status`
   - `confidentiality_level_id`
@@ -275,36 +442,7 @@ Query: `page,page_size,search,department_id,role_id,status`
   - `assignee_user_id` (lọc “được giao cho tôi”)
 - sort: `sort=-received_date`
 
-**Response 200**
-```json
-{
-  "data": [
-    {
-      "id": 101,
-      "doc_code": "INC-2026-000101",
-      "incoming_number": "123",
-      "symbol_number": "01/CV-ABC",
-      "document_name": "Công văn về việc ...",
-      "summary": "Trích yếu ...",
-      "status": "assigned",
-      "received_date": "2026-03-01",
-      "due_date": "2026-03-10",
-      "sender_org": { "id": 9, "name": "Sở X" },
-      "confidentiality": { "id": 2, "code": "confidential", "name": "Mật" },
-      "urgency": { "id": 2, "code": "urgent", "name": "Khẩn" },
-      "has_attachments": true,
-      "last_activity_at": "2026-03-01T09:05:00Z"
-    }
-  ],
-  "meta": { "page": 1, "page_size": 20, "total": 1 }
-}
-```
-
----
-
-### 10.2 POST `/incoming-documents`
-Tạo mới văn bản đến
-
+### 11.2 POST `/incoming-documents`
 **Request**
 ```json
 {
@@ -320,72 +458,174 @@ Tạo mới văn bản đến
   "signer": "Nguyễn Văn A",
   "issued_date": "2026-02-28",
   "received_date": "2026-03-01",
+  "received_channel": "paper",
   "due_date": "2026-03-10",
   "owner_department_id": 1
 }
 ```
 
-**Response 201**
+### 11.3 GET `/incoming-documents/{id}`
+
+### 11.4 PATCH `/incoming-documents/{id}`
+> Không cho sửa nếu đã archived (hoặc theo policy).
+
+### 11.5 PATCH `/incoming-documents/{id}/status`
+**Request**
 ```json
-{
-  "data": {
-    "id": 101,
-    "doc_code": "INC-2026-000101",
-    "status": "received",
-    "created_at": "2026-03-01T08:00:00Z"
-  }
-}
+{ "status": "processing", "reason": "Bắt đầu xử lý" }
 ```
 
 ---
 
-### 10.3 GET `/incoming-documents/{id}`
+## 12. Outgoing Documents – Văn bản đi
+
+### 12.1 GET `/outgoing-documents`
+Query: giống incoming + `publish_from,publish_to`
+
+### 12.2 POST `/outgoing-documents`
+Tạo nháp văn bản đi.
+
+### 12.3 GET `/outgoing-documents/{id}` (BỔ SUNG)
 **Response 200**
 ```json
 {
   "data": {
-    "id": 101,
-    "doc_code": "INC-2026-000101",
-    "incoming_number": "123",
-    "symbol_number": "01/CV-ABC",
-    "document_name": "Công văn về việc ...",
+    "id": 201,
+    "doc_code": "OUT-2026-000201",
+    "outgoing_number": "45",
+    "symbol_number": "02/QD-XYZ",
+    "document_name": "Quyết định về việc ...",
     "summary": "Trích yếu ...",
-    "status": "assigned",
-    "received_date": "2026-03-01",
-    "due_date": "2026-03-10",
-    "sender_org": { "id": 9, "name": "Sở X" },
-    "confidentiality": { "id": 2, "code": "confidential", "name": "Mật" },
-    "urgency": { "id": 2, "code": "urgent", "name": "Khẩn" },
-    "field_sector": { "id": 3, "name": "Tài chính" },
-    "attachments": [
-      {
-        "id": 501,
-        "file_name": "scan.pdf",
-        "file_type": "pdf",
-        "file_size": 1024000,
-        "is_main": true,
-        "created_at": "2026-03-01T08:10:00Z"
-      }
-    ],
+    "status": "draft",
+    "publish_date": null,
+    "confidentiality": { "id": 1, "code": "public", "name": "Bình thường" },
+    "urgency": { "id": 1, "code": "normal", "name": "Thường" },
+    "attachments": [],
     "created_by": { "id": 12, "full_name": "Nguyễn Văn Thư" },
     "created_at": "2026-03-01T08:00:00Z",
-    "updated_at": "2026-03-02T09:00:00Z"
+    "updated_at": "2026-03-01T08:05:00Z"
   }
 }
 ```
 
----
-
-### 10.4 PATCH `/incoming-documents/{id}`
-Cập nhật metadata (không cho sửa nếu đã “lưu trữ” hoặc theo policy)
-
+### 12.4 PATCH `/outgoing-documents/{id}` (BỔ SUNG)
 **Request**
 ```json
 {
   "summary": "Trích yếu cập nhật",
-  "due_date": "2026-03-12",
-  "urgency_level_id": 1
+  "urgency_level_id": 2,
+  "confidentiality_level_id": 2
 }
+```
+
+**Response 200**
+```json
+{ "message": "Cập nhật thành công" }
+```
+
+### 12.5 Versions
+- POST `/outgoing-documents/{id}/versions`
+- GET `/outgoing-documents/{id}/versions`
+- PATCH `/outgoing-documents/{id}/versions/{version_id}`
+
+### 12.6 Publish/Recall
+- POST `/outgoing-documents/{id}/publish`
+- POST `/outgoing-documents/{id}/recall`
+
+---
+
+## 13. Recipients/Dispatch Log – Nơi nhận VB đi (BỔ SUNG)
+
+### 13.1 GET `/outgoing-documents/{id}/recipients`
+Query: `page,page_size,status,method`
+
+### 13.2 PATCH `/outgoing-recipients/{id}`
+Cập nhật trạng thái gửi (dùng bởi hệ thống tích hợp / admin).
+**Request**
+```json
+{ "status": "sent", "sent_at": "2026-03-02T10:00:00Z", "note": "Gửi email thành công" }
+```
+
+### 13.3 POST `/outgoing-recipients/{id}/retry`
+Retry gửi (nếu method là email/portal).
+**Request**
+```json
+{ "reason": "Retry do lỗi SMTP" }
+```
+
+---
+
+## 14. Document Links – Liên kết VB đến/đi (BỔ SUNG)
+
+### 14.1 POST `/document-links`
+**Request**
+```json
+{
+  "incoming_document_id": 101,
+  "outgoing_document_id": 201,
+  "link_type": "reply"
+}
+```
+
+**Response 201**
+```json
+{ "data": { "id": 3001 } }
+```
+
+### 14.2 GET `/incoming-documents/{id}/links`
+### 14.3 GET `/outgoing-documents/{id}/links`
+### 14.4 DELETE `/document-links/{id}`
+**Response 200**
+```json
+{ "message": "Đã xoá liên kết" }
+```
+
+---
+
+## 15. Attachments (File) – Upload/Preview/Download
+
+### 15.1 POST `/incoming-documents/{id}/attachments`
+multipart/form-data:
+- `file` (binary)
+- `is_main` (boolean)
+- `note` (string, optional)
+
+### 15.2 POST `/outgoing-documents/{id}/attachments`
+multipart/form-data tương tự.
+
+### 15.3 GET `/attachments/{id}/download`
+- Backend kiểm tra quyền theo: role + department + confidentiality + download policy
+- Nếu bị chặn download: trả 403
+```json
+{ "error": "forbidden", "message": "Không có quyền tải file", "request_id": "..." }
+```
+
+### 15.4 GET `/attachments/{id}/preview`
+Trả signed URL ngắn hạn.
+Nếu bị chặn preview: 403.
+
+### 15.5 DELETE `/attachments/{id}`
+Soft delete + audit.
+
+---
+
+## 16. Assignments – Giao xử lý
+- POST `/assignments`
+- GET `/assignments`
+- PATCH `/assignments/{id}`
+- PATCH `/assignments/{id}/complete`
+- POST `/assignments/{id}/revoke`
+
+---
+
+## 17. Comments/Directives – Bút phê/Ý kiến
+
+### 17.1 POST `/comments`
+### 17.2 GET `/comments`
+### 17.3 PATCH `/comments/{id}`
+**Request**
+```json
+{ "content": "Nội dung cập nhật", "edit_reason": "Sửa lỗi chính tả" }
 ```
 
 **Response 200**
@@ -395,288 +635,23 @@ Cập nhật metadata (không cho sửa nếu đã “lưu trữ” hoặc theo 
 
 ---
 
-### 10.5 PATCH `/incoming-documents/{id}/status`
-Đổi trạng thái vòng đời (tuỳ nghiệp vụ)
-**Request**
-```json
-{ "status": "processing" }
-```
+## 18. Timeline – Lịch sử xử lý
+- GET `/incoming-documents/{id}/timeline`
+- GET `/outgoing-documents/{id}/timeline`
 
 ---
 
-## 11. Outgoing Documents – Văn bản đi
-
-### 11.1 GET `/outgoing-documents`
-Query: giống incoming, thêm `publish_from,publish_to`
-
-### 11.2 POST `/outgoing-documents`
-Tạo nháp văn bản đi
-
-**Request**
-```json
-{
-  "outgoing_number": "45",
-  "symbol_number": "02/QD-XYZ",
-  "document_name": "Quyết định về việc ...",
-  "summary": "Trích yếu ...",
-  "document_type_id": 2,
-  "urgency_level_id": 1,
-  "confidentiality_level_id": 1,
-  "field_sector_id": 2
-}
-```
-
-**Response 201**
-```json
-{ "data": { "id": 201, "doc_code": "OUT-2026-000201", "status": "draft" } }
-```
-
-### 11.3 POST `/outgoing-documents/{id}/versions`
-Tạo phiên bản dự thảo
-**Request**
-```json
-{ "version_no": 1, "title": "Dự thảo lần 1", "content_text": "..." }
-```
-**Response 201**
-```json
-{ "data": { "id": 901, "version_no": 1, "is_current": true } }
-```
-
-### 11.4 GET `/outgoing-documents/{id}/versions`
-Danh sách version
-
-### 11.5 PATCH `/outgoing-documents/{id}/versions/{version_id}`
-Cập nhật nội dung version (tuỳ policy)
-
-### 11.6 POST `/outgoing-documents/{id}/publish`
-Phát hành
-**Request**
-```json
-{
-  "publish_date": "2026-03-02",
-  "recipients": [
-    { "recipient_org_id": 9, "method": "paper" },
-    { "recipient_name": "Đơn vị ngoài danh mục", "method": "email" }
-  ]
-}
-```
-**Response 200**
-```json
-{ "message": "Phát hành thành công" }
-```
-
-### 11.7 POST `/outgoing-documents/{id}/recall`
-Thu hồi văn bản đi
-**Request**
-```json
-{ "reason": "Phát hành nhầm nơi nhận" }
-```
+## 19. Search/Export
+- GET `/documents/search`
+- GET `/documents/export?format=excel|pdf`
 
 ---
 
-## 12. Attachments (File) – Upload/Preview/Download
-> Đây là phần app cần nhất ngoài list/detail: upload + preview + download có kiểm soát.
+## 20. Notifications
 
-### 12.1 POST `/incoming-documents/{id}/attachments`
-multipart/form-data:
-- `file` (binary)
-- `is_main` (boolean)
-- `note` (string, optional)
-
-**Response 201**
-```json
-{
-  "data": {
-    "id": 501,
-    "file_name": "scan.pdf",
-    "file_type": "pdf",
-    "file_size": 1024000,
-    "is_main": true,
-    "created_at": "2026-03-01T08:10:00Z"
-  }
-}
-```
-
-### 12.2 POST `/outgoing-documents/{id}/attachments`
-tương tự
-
-### 12.3 GET `/attachments/{id}/download`
-- Backend kiểm tra quyền theo: role + department + confidentiality + download policy
-- Trả file stream
-
-**Response 200**
-- `Content-Type: application/octet-stream`
-
-### 12.4 GET `/attachments/{id}/preview`
-Trả preview URL ngắn hạn (signed URL) để app mở PDF/image nhanh
-
-**Response 200**
-```json
-{
-  "data": {
-    "preview_url": "https://cdn.example.com/signed/....",
-    "expires_at": "2026-03-03T10:20:00Z"
-  }
-}
-```
-
-### 12.5 DELETE `/attachments/{id}`
-Xoá mềm (deleted=true), bắt buộc quyền + log
-
----
-
-## 13. Assignments – Giao xử lý
-
-### 13.1 POST `/assignments`
-**Request**
-```json
-{
-  "document_kind": "incoming",
-  "document_id": 101,
-  "assign_role": "primary",
-  "assignee_department_id": 3,
-  "assignee_user_id": null,
-  "directive": "Phòng A chủ trì xử lý, báo cáo kết quả",
-  "due_date": "2026-03-10"
-}
-```
-
-**Response 201**
-```json
-{
-  "data": {
-    "id": 7001,
-    "status": "new",
-    "assigned_at": "2026-03-01T09:00:00Z"
-  }
-}
-```
-
-### 13.2 GET `/assignments`
-Dùng cho “Văn bản được giao cho tôi/đơn vị tôi”
-**Query**
-- `assignee_user_id`
-- `assignee_department_id`
-- `status`
-- `document_kind`
-- `due_from,due_to`
-
-### 13.3 PATCH `/assignments/{id}`
-Cập nhật trạng thái xử lý
-**Request**
-```json
-{ "status": "processing" }
-```
-
-### 13.4 PATCH `/assignments/{id}/complete`
-Hoàn thành + ghi kết quả
-**Request**
-```json
-{
-  "result_note": "Đã xử lý xong",
-  "result_attachment_ids": [801, 802]
-}
-```
-
-### 13.5 POST `/assignments/{id}/revoke`
-Thu hồi giao xử lý
-**Request**
-```json
-{ "reason": "Giao nhầm đơn vị" }
-```
-
----
-
-## 14. Comments/Directives – Bút phê/Ý kiến
-
-### 14.1 POST `/comments`
-**Request**
-```json
-{
-  "document_kind": "incoming",
-  "document_id": 101,
-  "comment_type": "directive",
-  "content": "Chuyển phòng A xử lý, báo cáo trước 10/03"
-}
-```
-
-**Response 201**
-```json
-{ "data": { "id": 8001, "created_at": "2026-03-01T09:05:00Z" } }
-```
-
-### 14.2 GET `/comments`
-**Query**
-- `document_kind`
-- `document_id`
-
-### 14.3 PATCH `/comments/{id}` (tuỳ policy)
-Nếu cho sửa, bắt buộc lưu `edit_reason`
-
----
-
-## 15. Timeline – Lịch sử xử lý
-> Timeline giúp app hiển thị “ai làm gì” theo thời gian (khác audit log là hành vi kỹ thuật view/download).
-
-### 15.1 GET `/incoming-documents/{id}/timeline`
-### 15.2 GET `/outgoing-documents/{id}/timeline`
-
-**Response 200**
-```json
-{
-  "data": [
-    {
-      "event": "created",
-      "at": "2026-03-01T08:00:00Z",
-      "by": { "id": 12, "full_name": "Nguyễn Văn Thư" },
-      "note": "Tiếp nhận văn bản"
-    },
-    {
-      "event": "comment_created",
-      "at": "2026-03-01T09:05:00Z",
-      "by": { "id": 2, "full_name": "Lãnh đạo" },
-      "note": "Chuyển phòng A xử lý..."
-    },
-    {
-      "event": "assignment_created",
-      "at": "2026-03-01T09:00:00Z",
-      "by": { "id": 2, "full_name": "Lãnh đạo" },
-      "note": "Giao phòng A chủ trì, hạn 10/03"
-    }
-  ]
-}
-```
-
----
-
-## 16. Search/Export
-
-### 16.1 GET `/documents/search`
-**Query**
-- `kind=incoming|outgoing|all`
-- `search`
-- `symbol_number`
-- `incoming_number`
-- `outgoing_number`
-- `org_id`
-- `signer`
-- `status`
-- `confidentiality_level_id`
-- `urgency_level_id`
-- `from,to`
-- `page,page_size,sort`
-
-### 16.2 GET `/documents/export`
-**Query**
-- giống `/documents/search`
-- `format=excel|pdf`
-
----
-
-## 17. Notifications
-
-### 17.1 GET `/notifications`
+### 20.1 GET `/notifications`
 Query: `unread=true|false`
+
 **Response**
 ```json
 {
@@ -684,7 +659,7 @@ Query: `unread=true|false`
     {
       "id": 90001,
       "type": "assignment",
-      "content": "B���n được giao xử lý INC-2026-000101",
+      "content": "Bạn được giao xử lý INC-2026-000101",
       "read": false,
       "created_at": "2026-03-01T09:00:00Z",
       "ref": { "document_kind": "incoming", "document_id": 101 }
@@ -693,51 +668,21 @@ Query: `unread=true|false`
 }
 ```
 
-### 17.2 PATCH `/notifications/{id}/read`
-### 17.3 PATCH `/notifications/read-all` (khuyến nghị)
+### 20.2 PATCH `/notifications/{id}/read`
+### 20.3 PATCH `/notifications/read-all`
 
 ---
 
-## 18. Audit Logs
-> Audit là bắt buộc để truy vết “xem/tải/in/chuyển”.
-
-### 18.1 GET `/audit-logs`
-**Query**
-- `user_id`
-- `action`
-- `document_kind`
-- `document_id`
-- `attachment_id`
-- `from,to`
-- `page,page_size`
-
-**Response**
-```json
-{
-  "data": [
-    {
-      "id": 600001,
-      "user": { "id": 12, "full_name": "Nguyễn Văn Thư" },
-      "action": "download_file",
-      "document_kind": "incoming",
-      "document_id": 101,
-      "attachment_id": 501,
-      "ip_address": "203.0.113.5",
-      "created_at": "2026-03-01T10:00:00Z",
-      "result": "success"
-    }
-  ],
-  "meta": { "page": 1, "page_size": 20, "total": 1 }
-}
-```
-
-### 18.2 GET `/incoming-documents/{id}/audit-logs`
-### 18.3 GET `/outgoing-documents/{id}/audit-logs`
+## 21. Audit Logs
+- GET `/audit-logs`
+- GET `/incoming-documents/{id}/audit-logs`
+- GET `/outgoing-documents/{id}/audit-logs`
 
 ---
 
-## 19. Phân quyền (RBAC + độ mật) – quy ước thực thi
-### 19.1 Permission codes (gợi ý)
+## 22. Phân quyền (RBAC + độ mật) – quy ước thực thi
+
+### 22.1 Permission codes (gợi ý)
 - Incoming:
   - `incoming.create`, `incoming.view`, `incoming.update`, `incoming.change_status`
 - Outgoing:
@@ -750,23 +695,26 @@ Query: `unread=true|false`
   - `attachment.upload`, `attachment.download`, `attachment.preview`, `attachment.delete`
 - Audit:
   - `audit.view`
+- System:
+  - `user.manage`, `role.manage`, `masterdata.manage` (khuyến nghị thêm)
 
-### 19.2 Rule độ mật (thực tế)
+### 22.2 Rule độ mật (thực tế)
 - Khi văn bản có `confidentiality_level >= secret`:
-  - chỉ user thuộc đúng đơn vị/được giao/được uỷ quyền mới xem
+  - chỉ user thuộc đúng đơn vị/được giao/được uỷ quyền (delegation) mới xem
+  - tách quyền “xem metadata” và “xem/tải file”
   - hạn chế download/print theo policy
-  - bắt buộc ghi audit khi view/download/print
+  - bắt buộc ghi audit khi view/preview/download/print/export
 
 ---
 
-## 20. Checklist MVP (đủ để làm app)
+## 23. Checklist MVP (đủ để làm app)
 ✅ Auth: login/refresh/whoami/logout  
 ✅ Master data: document-types, confidentiality-levels, urgency-levels, organizations, field-sectors  
 ✅ Incoming: list/create/detail/update/change_status/upload/timeline  
 ✅ Outgoing: list/create/detail/update/version/publish/recall/upload/timeline  
 ✅ Assignment: create/list/update/complete/revoke  
-✅ Comment: create/list  
-✅ Attachment: preview/download/delete  
+✅ Comment: create/list/update  
+✅ Attachment: upload/preview/download/delete  
 ✅ Search + Export  
 ✅ Notifications: list/mark read/read-all  
 ✅ Audit logs: list/by-document  
